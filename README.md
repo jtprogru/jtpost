@@ -1,19 +1,18 @@
 # jtpost
 
-CLI-редактор постов для управления контент-пайплайном (блог + Telegram).
+CLI-редактор постов для управления контент-пайплайном (Telegram).
 
 ## Описание
 
-**jtpost** — утилита командной строки для управления жизненным циклом постов: от идеи до публикации в блоге и Telegram-канале.
+**jtpost** — утилита командной строки для управления жизненным циклом постов: от идеи до публикации в Telegram-канале.
 
 ### Возможности
 
 - ✅ Создание постов с frontmatter (YAML + Markdown)
 - ✅ Управление статусами: `idea` → `draft` → `ready` → `scheduled` → `published`
-- ✅ Поддержка нескольких платформ: блог, Telegram
+- ✅ Публикация в Telegram
 - ✅ Фильтрация и поиск постов
 - ✅ Планирование публикаций
-- ✅ Интеграция с Hugo и статическими генераторами
 
 ## Установка
 
@@ -95,12 +94,11 @@ jtpost status <id> --set ready
 title: "Заголовок поста"
 slug: "my-first-post"
 status: "draft"
-platforms: ["blog", "telegram"]
+platforms: ["telegram"]
 deadline: "2026-02-01"
 scheduled_at: "2026-02-03T10:00:00+03:00"
 tags: ["golang", "cli"]
 external:
-  blog_url: ""
   telegram_url: ""
 ---
 
@@ -116,19 +114,15 @@ external:
 posts_dir: content/posts
 templates_dir: templates
 
-# Платформы
-platforms:
-  blog:
-    type: hugo
-    path: /path/to/blog
-  telegram:
-    bot_token: "${TELEGRAM_BOT_TOKEN}"
-    chat_id: "${TELEGRAM_CHAT_ID}"
+# Telegram настройки
+telegram:
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  chat_id: "${TELEGRAM_CHAT_ID}"
 
 # Настройки по умолчанию
 defaults:
   status: draft
-  platforms: ["blog"]
+  platforms: ["telegram"]
 ```
 
 ## Разработка
