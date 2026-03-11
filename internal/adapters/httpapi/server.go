@@ -45,6 +45,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/stats", s.handleStats)
 	s.mux.HandleFunc("/api/next", s.handleNext)
 	s.mux.HandleFunc("/api/plan", s.handlePlan)
+	s.mux.HandleFunc("/api/platforms", s.handlePlatforms)
+	s.mux.HandleFunc("/api/tags", s.handleTags)
 	s.mux.HandleFunc("/", s.handleIndex)
 }
 
@@ -103,6 +105,13 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Сортировка
+	sortField := r.URL.Query().Get("sort")
+	sortOrder := r.URL.Query().Get("order")
+	if sortField != "" {
+		sortPosts(posts, sortField, sortOrder)
+	}
+
 	// Конвертируем в JSON-совместимый формат
 	jsonPosts := make([]jsonPost, len(posts))
 	for i, post := range posts {
@@ -111,6 +120,65 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jsonPosts)
+}
+
+// sortPosts сортирует посты по указанному полю.
+func sortPosts(posts []*core.Post, field, order string) {
+	ascending := order != "desc"
+
+	sortFunc := func(i, j int) bool {
+		var less bool
+		switch field {
+		case "status":
+			statusOrder := map[core.PostStatus]int{
+				core.StatusIdea: 0, core.StatusDraft: 1, core.StatusReady: 2,
+				core.StatusScheduled: 3, core.StatusPublished: 4,
+			}
+			less = statusOrder[posts[i].Status] < statusOrder[posts[j].Status]
+		case "platforms":
+			less = strings.Join(platformsToString(posts[i].Platforms), ",") <
+				strings.Join(platformsToString(posts[j].Platforms), ",")
+		case "tags":
+			less = strings.Join(posts[i].Tags, ",") < strings.Join(posts[j].Tags, ",")
+		case "deadline":
+			if posts[i].Deadline == nil && posts[j].Deadline == nil {
+				less = false
+			} else if posts[i].Deadline == nil {
+				less = false
+			} else if posts[j].Deadline == nil {
+				less = true
+			} else {
+				less = posts[i].Deadline.Before(*posts[j].Deadline)
+			}
+		case "title":
+			less = posts[i].Title < posts[j].Title
+		default:
+			less = true
+		}
+
+		if !ascending {
+			return !less
+		}
+		return less
+	}
+
+	// Пузырьковая сортировка
+	for i := 0; i < len(posts)-1; i++ {
+		for j := 0; j < len(posts)-i-1; j++ {
+			if !sortFunc(j, j+1) {
+				posts[j], posts[j+1] = posts[j+1], posts[j]
+			}
+		}
+	}
+}
+
+// platformsToString конвертирует []Platform в []string.
+func platformsToString(platforms []core.Platform) []string {
+	result := make([]string, len(platforms))
+	for i, p := range platforms {
+		result[i] = string(p)
+	}
+	return result
 }
 
 // createPost обрабатывает POST /api/posts.
@@ -496,4 +564,61 @@ func toJSONPlannedPost(post *core.Post, date time.Time, dateType string) jsonPla
 		Date:     date,
 		DateType: dateType,
 	}
+}
+
+// handlePlatforms обрабатывает GET /api/platforms.
+func (s *Server) handlePlatforms(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Возвращаем список доступных платформ
+	platforms := []string{"telegram", "blog"}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string][]string{"platforms": platforms})
+}
+
+// handleTags обрабатывает GET /api/tags.
+func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Получаем все посты для извлечения тегов
+	posts, err := s.service.ListPosts(ctx, core.PostFilter{})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Собираем уникальные теги
+	tagSet := make(map[string]bool)
+	for _, post := range posts {
+		for _, tag := range post.Tags {
+			tagSet[tag] = true
+		}
+	}
+
+	// Конвертируем в срез
+	tags := make([]string, 0, len(tagSet))
+	for tag := range tagSet {
+		tags = append(tags, tag)
+	}
+
+	// Сортируем теги по алфавиту
+	for i := 0; i < len(tags)-1; i++ {
+		for j := i + 1; j < len(tags); j++ {
+			if tags[i] > tags[j] {
+				tags[i], tags[j] = tags[j], tags[i]
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string][]string{"tags": tags})
 }
