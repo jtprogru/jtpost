@@ -1,0 +1,11 @@
+posts_dir: content/posts
+templates_dir: templates
+
+telegram:
+  bot_token: 1234567890:ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHI
+  chat_id: -1009999999999
+
+defaults:
+  status: idea
+  platforms:
+    - telegram

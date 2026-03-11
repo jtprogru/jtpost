@@ -1,0 +1,67 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "."
+      ],
+      "description": "Доступ к файловой системе проекта"
+    },
+    "git": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-git"
+      ],
+      "description": "Git операции: commit, log, diff, status"
+    },
+    "golangci-lint": {
+      "command": "golangci-lint",
+      "args": [
+        "run",
+        "--out-format",
+        "json"
+      ],
+      "description": "Запуск линтера для Go кода"
+    },
+    "go-test": {
+      "command": "go",
+      "args": [
+        "test",
+        "-v",
+        "-json",
+        "./..."
+      ],
+      "description": "Запуск тестов с JSON выводом"
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-context7"
+      ],
+      "description": "Поиск документации по Go пакетам и API"
+    },
+    "memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "description": "Сохранение контекста между сессиями"
+    },
+    "go-modules": {
+      "command": "go",
+      "args": [
+        "list",
+        "-m",
+        "-json",
+        "all"
+      ],
+      "description": "Управление Go модулями и зависимостями"
+    }
+  },
+  "$version": 3
+}

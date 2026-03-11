@@ -187,8 +187,16 @@ idea → draft → ready → scheduled → published
 
 MIT
 
-## Ссылки
+## Документация
+
+- **[docs/cli.md](./docs/cli.md)** — полное описание CLI команд
+- **[docs/api.md](./docs/api.md)** — документация HTTP API
+- **[docs/architecture.md](./docs/architecture.md)** — архитектура проекта
+- **[docs/configuration.md](./docs/configuration.md)** — настройка и конфигурация
+- **[docs/development.md](./docs/development.md)** — руководство для разработчиков
+
+## Дополнительные ресурсы
 
 - [ROADMAP.md](./ROADMAP.md) — план развития
-- [AGENTS.md](./AGENTS.md) — руководство для разработчиков
+- [AGENTS.md](./AGENTS.md) — руководство для AI-ассистентов
 - [QWEN.md](./QWEN.md) — контекст для AI-ассистентов
