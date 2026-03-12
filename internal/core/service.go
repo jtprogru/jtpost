@@ -67,6 +67,26 @@ func (s *PostService) GetByID(ctx context.Context, id PostID) (*Post, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
+// GetBySlug возвращает пост по slug.
+func (s *PostService) GetBySlug(ctx context.Context, slug string) (*Post, error) {
+	return s.repo.GetBySlug(ctx, slug)
+}
+
+// CreatePostWithContent создаёт пост с готовым контентом (для импорта).
+func (s *PostService) CreatePostWithContent(ctx context.Context, post *Post) error {
+	if post.Title == "" {
+		return ErrEmptyTitle
+	}
+	if post.Slug == "" {
+		return ErrEmptySlug
+	}
+	if post.ID == "" {
+		now := s.clock.Now()
+		post.ID = PostID(fmt.Sprintf("%d-%s", now.UnixNano(), post.Slug))
+	}
+	return s.repo.Create(ctx, post)
+}
+
 // ListPosts возвращает список постов с фильтрами.
 func (s *PostService) ListPosts(ctx context.Context, filter PostFilter) ([]*Post, error) {
 	return s.repo.List(ctx, filter)

@@ -58,6 +58,26 @@ func (r *FileSystemPostRepository) GetByID(ctx context.Context, id core.PostID) 
 	return post, nil
 }
 
+// GetBySlug возвращает пост по slug.
+func (r *FileSystemPostRepository) GetBySlug(ctx context.Context, slug string) (*core.Post, error) {
+	filePath := filepath.Join(r.rootPath, slug+".md")
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, core.ErrNotFound
+		}
+		return nil, err
+	}
+
+	post, err := ParsePost(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return post, nil
+}
+
 // List возвращает список постов с применением фильтров.
 func (r *FileSystemPostRepository) List(ctx context.Context, filter core.PostFilter) ([]*core.Post, error) {
 	entries, err := os.ReadDir(r.rootPath)
@@ -171,27 +191,6 @@ func (r *FileSystemPostRepository) findFileByID(id core.PostID) (string, error) 
 	}
 
 	return "", core.ErrNotFound
-}
-
-// getBySlug ищет файл поста по slug.
-func (r *FileSystemPostRepository) getBySlug(ctx context.Context, slug string) (*core.Post, error) {
-	filePath := filepath.Join(r.rootPath, slug+".md")
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, core.ErrNotFound
-		}
-		return nil, err
-	}
-
-	post, err := ParsePost(data)
-	if err != nil {
-		return nil, err
-	}
-
-	post.ID = core.PostID(slug)
-	return post, nil
 }
 
 // buildFilePath строит путь к файлу поста.

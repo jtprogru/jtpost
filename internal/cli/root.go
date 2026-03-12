@@ -57,6 +57,7 @@ func init() {
 	rootCmd.AddCommand(statsCmd)
 	rootCmd.AddCommand(nextCmd)
 	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(importCmd)
 }
 
 func initConfig() {

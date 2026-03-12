@@ -258,6 +258,15 @@ func (m *mockRepository) GetByID(ctx context.Context, id PostID) (*Post, error) 
 	return post, nil
 }
 
+func (m *mockRepository) GetBySlug(ctx context.Context, slug string) (*Post, error) {
+	for _, post := range m.posts {
+		if post.Slug == slug {
+			return post, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
 func (m *mockRepository) List(ctx context.Context, filter PostFilter) ([]*Post, error) {
 	if m.listErr != nil {
 		return nil, m.listErr

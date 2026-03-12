@@ -39,6 +39,15 @@ func (m *mockPostRepository) GetByID(_ context.Context, id core.PostID) (*core.P
 	return post, nil
 }
 
+func (m *mockPostRepository) GetBySlug(_ context.Context, slug string) (*core.Post, error) {
+	for _, post := range m.posts {
+		if post.Slug == slug {
+			return post, nil
+		}
+	}
+	return nil, core.ErrNotFound
+}
+
 func (m *mockPostRepository) List(_ context.Context, filter core.PostFilter) ([]*core.Post, error) {
 	var result []*core.Post
 	for _, post := range m.posts {

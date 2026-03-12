@@ -1,9 +1,17 @@
 package core
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // PostID уникальный идентификатор поста.
 type PostID string
+
+// GeneratePostID генерирует уникальный ID для поста.
+func GeneratePostID(slug string, t time.Time) PostID {
+	return PostID(fmt.Sprintf("%d-%s", t.UnixNano(), slug))
+}
 
 // ExternalLinks ссылки на опубликованные посты на внешних платформах.
 type ExternalLinks struct {
