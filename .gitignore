@@ -18,3 +18,4 @@ dist/
 *.log
 .jtpost.yaml
 content/
+.jtpost.db

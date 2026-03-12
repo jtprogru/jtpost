@@ -58,6 +58,7 @@ func init() {
 	rootCmd.AddCommand(nextCmd)
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(importCmd)
+	rootCmd.AddCommand(migrateCmd)
 }
 
 func initConfig() {

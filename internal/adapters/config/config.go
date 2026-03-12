@@ -16,8 +16,16 @@ type Config struct {
 	TemplatesDir string `yaml:"templates_dir,omitempty" json:"templates_dir,omitempty"`
 	// Telegram настройки Telegram
 	Telegram TelegramConfig `yaml:"telegram,omitempty" json:"telegram,omitempty"`
+	// SQLite настройки SQLite хранилища
+	SQLite SQLiteConfig `yaml:"sqlite,omitempty" json:"sqlite,omitempty"`
 	// Defaults настройки по умолчанию
 	Defaults DefaultConfig `yaml:"defaults,omitempty" json:"defaults,omitempty"`
+}
+
+// SQLiteConfig настройки SQLite хранилища.
+type SQLiteConfig struct {
+	// DSN строка подключения к базе данных (путь к файлу .db)
+	DSN string `yaml:"dsn,omitempty" json:"dsn,omitempty"`
 }
 
 // TelegramConfig настройки Telegram.
@@ -38,6 +46,9 @@ func NewDefaultConfig() *Config {
 	return &Config{
 		PostsDir:     "content/posts",
 		TemplatesDir: "templates",
+		SQLite: SQLiteConfig{
+			DSN: ".jtpost.db",
+		},
 		Defaults: DefaultConfig{
 			Status:    string(core.StatusIdea),
 			Platforms: []string{"telegram"},
@@ -66,6 +77,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.TemplatesDir == "" {
 		cfg.TemplatesDir = NewDefaultConfig().TemplatesDir
+	}
+	if cfg.SQLite.DSN == "" {
+		cfg.SQLite.DSN = NewDefaultConfig().SQLite.DSN
 	}
 
 	return &cfg, nil
