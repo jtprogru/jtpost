@@ -43,7 +43,6 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/posts", s.handlePosts)
 	s.mux.HandleFunc("/api/posts/", s.handlePostByID)
 	s.mux.HandleFunc("/api/stats", s.handleStats)
-	s.mux.HandleFunc("/api/next", s.handleNext)
 	s.mux.HandleFunc("/api/plan", s.handlePlan)
 	s.mux.HandleFunc("/api/platforms", s.handlePlatforms)
 	s.mux.HandleFunc("/api/tags", s.handleTags)
@@ -352,32 +351,6 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(stats)
-}
-
-// handleNext обрабатывает GET /api/next.
-func (s *Server) handleNext(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	ctx := r.Context()
-
-	post, err := s.service.GetNextPost(ctx)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if post == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "no posts to recommend"})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(toJSONPost(post))
 }
 
 // handlePlan обрабатывает GET /api/plan.

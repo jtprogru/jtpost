@@ -71,14 +71,6 @@
       <!-- Заголовок слева -->
       <h1 class="text-2xl font-semibold mb-6">Управление постами</h1>
 
-      <!-- Блок рекомендуемого поста -->
-      <div id="next-post" hx-get="/api/next" hx-trigger="load" hx-swap="innerHTML" class="mb-6">
-        <div class="bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg shadow-lg p-5 text-white">
-          <h2 class="text-lg font-semibold mb-2">📌 Рекомендуемый пост</h2>
-          <p class="text-sm opacity-90">Загрузка...</p>
-        </div>
-      </div>
-
       <!-- Горизонтальная статистика -->
       <section id="stats" hx-get="/api/stats" hx-trigger="load" hx-swap="innerHTML" class="flex flex-wrap gap-4 mb-6">
         <div class="bg-white rounded-lg shadow-sm px-5 py-4 min-w-[150px]">
@@ -352,27 +344,6 @@
         }
       }
 
-      if (evt.target.id === 'next-post') {
-        try {
-          var post = JSON.parse(evt.detail.xhr.responseText);
-          if (post.error || !post.id) {
-            evt.target.innerHTML =
-              '<div class="bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg shadow-lg p-5 text-white">' +
-              '<h2 class="text-lg font-semibold mb-2">📌 Рекомендуемый пост</h2>' +
-              '<p class="text-sm opacity-90">Нет постов для рекомендации</p></div>';
-          } else {
-            evt.target.innerHTML =
-              '<div class="bg-gradient-to-r from-violet-600 to-purple-600 rounded-lg shadow-lg p-5 text-white">' +
-              '<h2 class="text-lg font-semibold mb-2">📌 Рекомендуемый пост</h2>' +
-              '<p class="text-sm"><strong>' + escapeHtml(post.title) + '</strong></p>' +
-              '<p class="text-xs opacity-90 mt-1">Статус: ' + post.status + ' | Дедлайн: ' + (post.deadline ? formatDate(post.deadline) : 'не установлен') + '</p>' +
-              '<a href="#" onclick="openPostModal(\'' + post.id + '\'); return false;" class="inline-block mt-2 text-xs underline hover:no-underline">Открыть пост →</a></div>';
-          }
-        } catch (e) {
-          console.error('Ошибка парсинга рекомендации:', e);
-        }
-      }
-
       if (evt.target.id === 'posts-list') {
         try {
           allPosts = JSON.parse(evt.detail.xhr.responseText);
@@ -594,7 +565,6 @@
         closePostModal();
         htmx.trigger('#posts-list', 'load');
         htmx.trigger('#stats', 'load');
-        htmx.trigger('#next-post', 'load');
         showToast('Пост успешно сохранён', 'success');
       })
       .catch(function(err) {
@@ -626,7 +596,6 @@
           closePostModal();
           htmx.trigger('#posts-list', 'load');
           htmx.trigger('#stats', 'load');
-          htmx.trigger('#next-post', 'load');
           showToast('Пост удалён', 'success');
         })
         .catch(function(err) {
@@ -701,7 +670,6 @@
           closePostModal();
           htmx.trigger('#posts-list', 'load');
           htmx.trigger('#stats', 'load');
-          htmx.trigger('#next-post', 'load');
           showToast('Пост опубликован', 'success');
         }, 1500);
       })

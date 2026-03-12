@@ -294,54 +294,6 @@ func TestServer_HandleStats(t *testing.T) {
 	})
 }
 
-func TestServer_HandleNext(t *testing.T) {
-	repo := newMockPostRepository()
-	service := core.NewPostService(repo, &mockClock{now: time.Now()})
-	server := NewServer(service, nil)
-
-	t.Run("GET /api/next returns 404 when no posts", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/next", nil)
-		w := httptest.NewRecorder()
-
-		server.ServeHTTP(w, req)
-
-		if w.Code != http.StatusNotFound {
-			t.Errorf("Expected status 404, got %d", w.Code)
-		}
-	})
-
-	t.Run("GET /api/next returns recommended post", func(t *testing.T) {
-		ctx := context.Background()
-		now := time.Now()
-		deadline := now.Add(-24 * time.Hour) // Просроченный дедлайн
-
-		post := &core.Post{
-			ID:       "urgent-post",
-			Title:    "Urgent Post",
-			Slug:     "urgent-post",
-			Status:   core.StatusDraft,
-			Deadline: &deadline,
-		}
-		repo.Create(ctx, post)
-
-		req := httptest.NewRequest(http.MethodGet, "/api/next", nil)
-		w := httptest.NewRecorder()
-
-		server.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
-
-		var result jsonPost
-		json.NewDecoder(w.Body).Decode(&result)
-
-		if result.ID != "urgent-post" {
-			t.Errorf("Expected 'urgent-post', got %s", result.ID)
-		}
-	})
-}
-
 func TestServer_HandlePlan(t *testing.T) {
 	repo := newMockPostRepository()
 	service := core.NewPostService(repo, &mockClock{now: time.Now()})
