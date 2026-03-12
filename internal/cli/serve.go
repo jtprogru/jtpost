@@ -13,12 +13,14 @@ import (
 	"github.com/jtprogru/jtpost/internal/adapters/httpapi"
 	"github.com/jtprogru/jtpost/internal/adapters/telegram"
 	"github.com/jtprogru/jtpost/internal/core"
+	"github.com/jtprogru/jtpost/internal/logger"
 	"github.com/spf13/cobra"
 )
 
 var (
-	serveAddr string = "0.0.0.0"
-	servePort int = 8080
+	serveAddr   string = "0.0.0.0"
+	servePort   int    = 8080
+	serveVerbose bool  = false
 )
 
 var serveCmd = &cobra.Command{
@@ -26,6 +28,18 @@ var serveCmd = &cobra.Command{
 	Short: "Запустить HTTP сервер",
 	Long:  `Запускает встроенный HTTP сервер с REST API и Web UI для управления постами.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Создаём логгер
+		logCfg := logger.Config{
+			Output: os.Stdout,
+			Debug:  serveVerbose,
+			Prefix: "[HTTP]",
+		}
+		log := logger.New(logCfg)
+
+		if serveVerbose {
+			log.Info("Verbose режим включён (DEBUG уровень)")
+		}
+
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
 		cfg, err := loadConfigOrCreateDefault(configPath)
@@ -52,13 +66,22 @@ var serveCmd = &cobra.Command{
 				ChannelID: cfg.Telegram.ChatID,
 			})
 			publishers[core.PlatformTelegram] = tgPublisher
-			fmt.Println("✅ Telegram publisher инициализирован")
+			log.Info("✅ Telegram publisher инициализирован")
 		} else {
-			fmt.Println("⚠️  Telegram publisher не настроен (отсутствует конфигурация)")
+			log.Warn("⚠️  Telegram publisher не настроен (отсутствует конфигурация)")
 		}
 
-		// Создаём HTTP сервер
-		server := httpapi.NewServer(service, publishers)
+		// Создаём HTTP сервер с логгером
+		serverCfg := httpapi.ServerConfig{
+			Service:    service,
+			Publishers: publishers,
+			Logger:     log,
+		}
+		server := httpapi.NewServerWithConfig(serverCfg)
+
+		// Оборачиваем сервер в middleware
+		handler := httpapi.LoggingMiddleware(log, server)
+		handler = httpapi.RecoveryMiddleware(log, handler)
 
 		// Настраиваем адрес
 		addr := fmt.Sprintf("%s:%d", serveAddr, servePort)
@@ -66,7 +89,7 @@ var serveCmd = &cobra.Command{
 		// Создаём HTTP сервер с таймаутами
 		httpServer := &http.Server{
 			Addr:         addr,
-			Handler:      server,
+			Handler:      handler,
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
 			IdleTimeout:  60 * time.Second,
@@ -78,30 +101,30 @@ var serveCmd = &cobra.Command{
 
 		// Запускаем сервер в горутине
 		go func() {
-			fmt.Printf("🚀 jtpost HTTP сервер запущен на http://%s\n", addr)
-			fmt.Println("📊 Web UI доступен в браузере")
-			fmt.Println("🔌 API endpoints:")
-			fmt.Println("   GET    /api/posts      — список постов")
-			fmt.Println("   GET    /api/posts/{id} — получить пост")
-			fmt.Println("   PATCH  /api/posts/{id} — обновить пост")
-			fmt.Println("   DELETE /api/posts/{id} — удалить пост")
-			fmt.Println("   POST   /api/posts      — создать пост")
-			fmt.Println("   POST   /api/posts/{id}/publish — опубликовать пост")
-			fmt.Println("   GET    /api/stats      — статистика")
-			fmt.Println("   GET    /api/next       — рекомендация")
-			fmt.Println("   GET    /api/plan       — план публикаций")
-			fmt.Println()
-			fmt.Println("Нажмите Ctrl+C для остановки")
+			log.Info("🚀 jtpost HTTP сервер запущен на http://%s", addr)
+			log.Info("📊 Web UI доступен в браузере")
+			log.Info("🔌 API endpoints:")
+			log.Info("   GET    /api/posts      — список постов")
+			log.Info("   GET    /api/posts/{id} — получить пост")
+			log.Info("   PATCH  /api/posts/{id} — обновить пост")
+			log.Info("   DELETE /api/posts/{id} — удалить пост")
+			log.Info("   POST   /api/posts      — создать пост")
+			log.Info("   POST   /api/posts/{id}/publish — опубликовать пост")
+			log.Info("   GET    /api/stats      — статистика")
+			log.Info("   GET    /api/next       — рекомендация")
+			log.Info("   GET    /api/plan       — план публикаций")
+			log.Info("")
+			log.Info("Нажмите Ctrl+C для остановки")
 
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				fmt.Fprintf(os.Stderr, "❌ Ошибка сервера: %v\n", err)
+				log.Error("❌ Ошибка сервера: %v", err)
 				os.Exit(1)
 			}
 		}()
 
 		// Ждём сигнал завершения
 		<-quit
-		fmt.Println("\n🛑 Остановка сервера...")
+		log.Info("\n🛑 Остановка сервера...")
 
 		// Graceful shutdown с таймаутом
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -111,7 +134,7 @@ var serveCmd = &cobra.Command{
 			return fmt.Errorf("ошибка остановки сервера: %w", err)
 		}
 
-		fmt.Println("✅ Сервер успешно остановлен")
+		log.Info("✅ Сервер успешно остановлен")
 		return nil
 	},
 }
@@ -119,4 +142,5 @@ var serveCmd = &cobra.Command{
 func init() {
 	serveCmd.Flags().StringVarP(&serveAddr, "addr", "a", "localhost", "адрес для прослушивания")
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8080, "порт для прослушивания")
+	serveCmd.Flags().BoolVarP(&serveVerbose, "verbose", "v", false, "включить подробное логирование (DEBUG режим)")
 }

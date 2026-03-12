@@ -1,71 +1,69 @@
-The user wants me to generate a comprehensive project summary based on the conversation history. Let me analyze what we've accomplished and create a well-structured summary in the specified markdown format.
+The user wants me to generate a comprehensive project summary in markdown format based on the conversation history. Let me analyze what we've accomplished in this session:
 
-Key information to include:
-1. Overall Goal - CLI tool for Telegram content pipeline management
-2. Key Knowledge - Architecture, Go version, storage options, commands, etc.
-3. Recent Actions - Stage 3 (SQLite) completion, documentation updates, final commit
-4. Current Plan - What's done and what's next
+1. We started from a project summary that showed v0.2.0 was completed with SQLite support
+2. The user chose to add logging to HTTP API
+3. I created:
+   - internal/logger/logger.go - a simple logger with levels (DEBUG, INFO, WARN, ERROR)
+   - internal/adapters/httpapi/middleware.go - HTTP middleware for request logging and panic recovery
+   - Updated internal/adapters/httpapi/server.go - added logger to server, added logging to handlers (listPosts, createPost)
 
-Let me create this summary based on the conversation.# Project Summary
+4. Still pending:
+   - Add --verbose flag to serve.go
+   - Write tests for middleware
+   - Run tests and linter, commit changes
+
+Let me create a comprehensive summary.# Project Summary
 
 ## Overall Goal
-Разработка CLI-инструмента **jtpost** на Go для управления контент-пайплайном Telegram-канала с поддержкой импорта постов, жизненного цикла контента и альтернативных хранилищ данных (FileSystem + SQLite).
+Разработка CLI-инструмента **jtpost** на Go для управления контент-пайплайном Telegram-канала с поддержкой импорта постов, жизненного цикла контента, альтернативных хранилищ (FileSystem + SQLite) и HTTP API с логированием.
 
 ## Key Knowledge
 - **Проект:** `github.com/jtprogru/jtpost` — CLI-инструмент для управления постами Telegram
 - **Go версия:** 1.25.5+
 - **Архитектура:** Hexagonal/Clean Architecture (`cmd/` + `internal/core/` + `internal/adapters/`)
 - **Сборка:** `go build -o ./dist/jtpost ./cmd/jtpost`
-- **Тесты:** `go test ./...` (100% PASS)
-- **Линтер:** `golangci-lint run` (29 незначительных предупреждений, не критично)
+- **Тесты:** `go test ./...`
+- **Линтер:** `golangci-lint run`
 - **CLI команд:** 14 (init, new, list, show, status, edit, delete, publish, plan, stats, next, serve, import, migrate)
-- **Хранилища:** FileSystem (оригинал), SQLite (новый адаптер через `modernc.org/sqlite`)
+- **Хранилища:** FileSystem (оригинал), SQLite (через `modernc.org/sqlite`)
+- **HTTP API:** Встроенный сервер с REST API (`/api/posts`, `/api/stats`, `/api/plan`) + Web UI
+- **Логгер:** `internal/logger` с уровнями DEBUG/INFO/WARN/ERROR
+- **Middleware:** LoggingMiddleware (логирует запросы), RecoveryMiddleware (восстановление после паник)
 - **Жизненный цикл поста:** `idea → draft → ready → scheduled → published`
-- **Формат поста:** Markdown с YAML frontmatter (title, slug, status, platforms, deadline, scheduled_at, tags, external)
-- **Платформы:** Только `telegram` (blog удалён в Этапе 2)
-- **Конфигурация:** `.jtpost.yaml` + env vars + CLI флаги
-- **MCP серверы:** filesystem, git, golangci-lint, go-test, context7, telegram, github
-- **Текущая версия:** v0.2.0 (тег создан)
+- **Формат поста:** Markdown с YAML frontmatter
+- **Платформы:** Только `telegram` (blog удалён)
+- **Текущая версия:** v0.2.0
 
 ## Recent Actions
-- ✅ **Этап 2 завершён (коммит `6abe3dc`):** Удалены все упоминания блога из кода, тестов, документации и UI
-- ✅ **Этап 3 завершён (коммит `eb8126b`):** Реализована поддержка SQLite хранилища
-  - Создан `internal/adapters/sqlite/repository.go` с миграциями схемы, CRUD-операциями и транзакциями
-  - Создано 10 юнит-тестов для SQLite (все PASS)
-  - Создана команда CLI `jtpost migrate` с флагами `--db`, `--dry-run`, `--overwrite`, `--from`
-  - Написана документация `docs/sqlite.md`
-  - Расширены интерфейсы `TransactionalRepository`, `MigratableRepository`
-  - Обновлён конфиг с `SQLiteConfig` (поле `DSN`)
-  - Протестирована миграция: 3 поста перенесены из `content/posts/` в `.jtpost.db`
-- ✅ **Документация обновлена (коммит `da3a9b2`):** ROADMAP.md, README.md, docs/sqlite.md
-- ✅ **PROJECT_SUMMARY.md обновлён (коммит `bf7aaa3`):** Финальное состояние проекта
-- ✅ **Все изменения запушены в origin/main**
-- ✅ **Тег v0.2.0 создан**
-- ✅ Сборка проекта успешна, тесты проходят (100% PASS)
+- ✅ **Создан пакет logger** (`internal/logger/logger.go`) — простой логгер с уровнями (DEBUG, INFO, WARN, ERROR), потокобезопасный, с поддержкой префиксов и debug-режима
+- ✅ **Создан middleware** (`internal/adapters/httpapi/middleware.go`) — `LoggingMiddleware` для логирования HTTP запросов (метод, путь, статус, байты, длительность) и `RecoveryMiddleware` для восстановления после паник
+- ✅ **Обновлён server.go** — добавлен `log *logger.Logger` в структуру Server, создан `NewServerWithConfig`, добавлено логирование в обработчики `listPosts` и `createPost`
+- 🔄 **В процессе:** Добавление флага `--verbose` в serve.go для включения DEBUG режима
+- 🔄 **В процессе:** Написание тестов на middleware
+- 🔄 **В процессе:** Интеграция middleware в HTTP сервер
 
 ## Current Plan
-1. [DONE] Этап 1: Импорт постов — команда `import` готова
-2. [DONE] Этап 2: Удаление упоминаний блога — все blog-упоминания удалены
-3. [DONE] Этап 3: Поддержка альтернативных хранилищ — SQLite реализовано
-   3.1 [DONE] Расширить интерфейс PostRepository (добавить транзакции)
-   3.2 [DONE] Создать SQLite репозиторий (internal/adapters/sqlite/)
-   3.3 [DONE] Создать команду CLI `post migrate`
-   3.4 [DONE] Написать тесты на SQLite (10 тестов, 100% PASS)
-   3.5 [DONE] Написать документацию (docs/sqlite.md)
-4. [DONE] Финальные задачи версии 0.2.0
-   4.1 [DONE] Обновить ROADMAP.md с отметкой о завершении Этапа 3
-   4.2 [DONE] Обновить README.md с информацией о SQLite
-   4.3 [DONE] Push коммитов в origin/main
-   4.4 [DONE] Создать тег версии 0.2.0
-5. [TODO] Будущие улучшения (опционально)
-   5.1 [TODO] Поддержка PostgreSQL хранилища
-   5.2 [TODO] Поддержка Git repository хранилища
-   5.3 [TODO] HTTP API + Web UI для управления постами
-   5.4 [TODO] Улучшение покрытия тестами (>80%)
-   5.5 [TODO] Исправление предупреждений линтера
+1. [DONE] Создать пакет internal/logger с базовым логгером
+2. [DONE] Добавить middleware для логирования HTTP запросов
+3. [IN PROGRESS] Добавить логирование в обработчики server.go
+   - [DONE] listPosts — логирование фильтров и результатов
+   - [DONE] createPost — логирование создания поста
+   - [TODO] updatePost, deletePost, getPost — логирование операций
+   - [TODO] publishPost — логирование публикации
+   - [TODO] handleStats, handlePlan — логирование запросов
+4. [TODO] Добавить флаг --verbose в serve.go для DEBUG режима
+5. [TODO] Интегрировать middleware в HTTP сервер (serve.go)
+6. [TODO] Написать тесты на middleware (middleware_test.go)
+7. [TODO] Запустить тесты и линтер, закоммитить изменения
 
 ---
 
 ## Summary Metadata
 
-**Update time**: 2026-03-12T11:26:35.569Z
+**Update time**: 2026-03-12T11:45:00Z
+**Session focus**: Добавление логирования в HTTP API
+
+---
+
+## Summary Metadata
+**Update time**: 2026-03-12T12:02:56.274Z 

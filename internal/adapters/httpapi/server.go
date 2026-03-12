@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jtprogru/jtpost/internal/core"
+	"github.com/jtprogru/jtpost/internal/logger"
 )
 
 //go:embed templates/index.html
@@ -20,14 +21,37 @@ type Server struct {
 	service    *core.PostService
 	publishers map[core.Platform]core.Publisher
 	mux        *http.ServeMux
+	log        *logger.Logger
+}
+
+// ServerConfig конфигурация HTTP сервера.
+type ServerConfig struct {
+	Service    *core.PostService
+	Publishers map[core.Platform]core.Publisher
+	Logger     *logger.Logger
 }
 
 // NewServer создаёт новый HTTP сервер.
 func NewServer(service *core.PostService, publishers map[core.Platform]core.Publisher) *Server {
+	return NewServerWithConfig(ServerConfig{
+		Service:    service,
+		Publishers: publishers,
+		Logger:     logger.NewDefault(),
+	})
+}
+
+// NewServerWithConfig создаёт HTTP сервер с конфигурацией.
+func NewServerWithConfig(cfg ServerConfig) *Server {
+	log := cfg.Logger
+	if log == nil {
+		log = logger.NewDefault()
+	}
+
 	s := &Server{
-		service:    service,
-		publishers: publishers,
+		service:    cfg.Service,
+		publishers: cfg.Publishers,
 		mux:        http.NewServeMux(),
+		log:        log,
 	}
 	s.registerRoutes()
 	return s
@@ -36,6 +60,11 @@ func NewServer(service *core.PostService, publishers map[core.Platform]core.Publ
 // ServeHTTP реализует http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
+}
+
+// Logger возвращает логгер сервера.
+func (s *Server) Logger() *logger.Logger {
+	return s.log
 }
 
 // registerRoutes регистрирует HTTP обработчики.
@@ -98,8 +127,12 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		filter.Search = search
 	}
 
+	s.log.Debug("ListPosts filter: statuses=%v, platforms=%v, tags=%v, search=%s",
+		filter.Statuses, filter.Platforms, filter.Tags, filter.Search)
+
 	posts, err := s.service.ListPosts(ctx, filter)
 	if err != nil {
+		s.log.Error("ListPosts error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -117,6 +150,7 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		jsonPosts[i] = toJSONPost(post)
 	}
 
+	s.log.Debug("ListPosts returned %d posts", len(posts))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jsonPosts)
 }
@@ -140,13 +174,14 @@ func sortPosts(posts []*core.Post, field, order string) {
 		case "tags":
 			less = strings.Join(posts[i].Tags, ",") < strings.Join(posts[j].Tags, ",")
 		case "deadline":
-			if posts[i].Deadline == nil && posts[j].Deadline == nil {
+			switch {
+			case posts[i].Deadline == nil && posts[j].Deadline == nil:
 				less = false
-			} else if posts[i].Deadline == nil {
+			case posts[i].Deadline == nil:
 				less = false
-			} else if posts[j].Deadline == nil {
+			case posts[j].Deadline == nil:
 				less = true
-			} else {
+			default:
 				less = posts[i].Deadline.Before(*posts[j].Deadline)
 			}
 		case "title":
@@ -162,8 +197,8 @@ func sortPosts(posts []*core.Post, field, order string) {
 	}
 
 	// Пузырьковая сортировка
-	for i := 0; i < len(posts)-1; i++ {
-		for j := 0; j < len(posts)-i-1; j++ {
+	for range len(posts) - 1 {
+		for j := range len(posts) - 1 {
 			if !sortFunc(j, j+1) {
 				posts[j], posts[j+1] = posts[j+1], posts[j]
 			}
@@ -192,6 +227,7 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		s.log.Warn("CreatePost decode error: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -202,6 +238,8 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 		platforms[i] = core.Platform(p)
 	}
 
+	s.log.Info("CreatePost title=%q, platforms=%v, tags=%v", input.Title, input.Platforms, input.Tags)
+
 	post, err := s.service.CreatePost(ctx, core.CreatePostInput{
 		Title:     input.Title,
 		Slug:      input.Slug,
@@ -209,10 +247,12 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 		Tags:      input.Tags,
 	})
 	if err != nil {
+		s.log.Error("CreatePost error: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	s.log.Info("CreatePost success id=%s", post.ID)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
@@ -253,12 +293,16 @@ func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getPost(w http.ResponseWriter, r *http.Request, id core.PostID) {
 	ctx := r.Context()
 
+	s.log.Debug("GetPost id=%s", id)
+
 	post, err := s.service.GetByID(ctx, id)
 	if err != nil {
+		s.log.Warn("GetPost error: %v, id=%s", err, id)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
+	s.log.Debug("GetPost success id=%s", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
 }
@@ -266,6 +310,8 @@ func (s *Server) getPost(w http.ResponseWriter, r *http.Request, id core.PostID)
 // updatePost обновляет пост.
 func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.PostID) {
 	ctx := r.Context()
+
+	s.log.Debug("UpdatePost id=%s", id)
 
 	var input struct {
 		Title     *string    `json:"title,omitempty"`
@@ -277,12 +323,14 @@ func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.Post
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		s.log.Warn("UpdatePost decode error: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	post, err := s.service.GetByID(ctx, id)
 	if err != nil {
+		s.log.Warn("UpdatePost not found: %v", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
@@ -293,8 +341,10 @@ func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.Post
 	}
 	if input.Status != nil {
 		newStatus := core.PostStatus(*input.Status)
+		s.log.Info("UpdatePost status id=%s, new=%s", id, newStatus)
 		updatedPost, err := s.service.UpdateStatus(ctx, id, newStatus)
 		if err != nil {
+			s.log.Error("UpdatePost status error: %v", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -314,10 +364,12 @@ func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.Post
 	}
 
 	if err := s.service.UpdatePost(ctx, post); err != nil {
+		s.log.Error("UpdatePost error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	s.log.Info("UpdatePost success id=%s", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
 }
@@ -326,11 +378,15 @@ func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.Post
 func (s *Server) deletePost(w http.ResponseWriter, r *http.Request, id core.PostID) {
 	ctx := r.Context()
 
+	s.log.Info("DeletePost id=%s", id)
+
 	if err := s.service.DeletePost(ctx, id); err != nil {
+		s.log.Error("DeletePost error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	s.log.Info("DeletePost success id=%s", id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -343,12 +399,16 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
+	s.log.Debug("HandleStats request")
+
 	stats, err := s.service.GetStats(ctx)
 	if err != nil {
+		s.log.Error("HandleStats error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	s.log.Debug("HandleStats success")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(stats)
 }
@@ -371,8 +431,11 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	s.log.Debug("HandlePlan days=%d", days)
+
 	posts, err := s.service.ListPosts(ctx, core.PostFilter{})
 	if err != nil {
+		s.log.Error("HandlePlan error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -405,6 +468,7 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 	// Сортируем по дате
 	sortPlannedByDate(planned)
 
+	s.log.Debug("HandlePlan returned %d planned posts", len(planned))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(planned)
 }
@@ -478,11 +542,13 @@ func (s *Server) publishPost(w http.ResponseWriter, r *http.Request, id core.Pos
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		s.log.Warn("PublishPost decode error: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if len(input.Platforms) == 0 {
+		s.log.Warn("PublishPost platforms required, id=%s", id)
 		http.Error(w, "platforms required", http.StatusBadRequest)
 		return
 	}
@@ -493,10 +559,15 @@ func (s *Server) publishPost(w http.ResponseWriter, r *http.Request, id core.Pos
 		platforms[i] = core.Platform(p)
 	}
 
+	s.log.Info("PublishPost id=%s, platforms=%v", id, input.Platforms)
+
 	post, err := s.service.PublishPost(ctx, id, core.PublishPostInput{
 		Platforms: platforms,
 	}, s.publishers)
 	if err != nil {
+		// Логируем ошибку
+		s.log.Error("PublishPost error: %v, id=%s", err, id)
+
 		// Обрабатываем разные типы ошибок
 		switch {
 		case errors.Is(err, core.ErrNotFound):
@@ -513,6 +584,7 @@ func (s *Server) publishPost(w http.ResponseWriter, r *http.Request, id core.Pos
 		return
 	}
 
+	s.log.Info("PublishPost success id=%s", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
 }
