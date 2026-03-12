@@ -1,54 +1,50 @@
-The user wants me to create a comprehensive project summary in markdown format based on the conversation history and state snapshot provided. I need to extract the key information about the jtpost project, recent work done, and current status.
+The user wants me to generate a comprehensive project summary based on the conversation context and state snapshot provided. I need to extract the key information about the jtpost project, focusing on what was accomplished (removing the recommendation functionality), the project structure, and any remaining tasks.
 
-Let me analyze what I know:
+Let me organize this into the requested markdown format:
 
-1. **Project**: jtpost - CLI tool for content pipeline management (Telegram + blog)
-2. **Technology**: Go 1.25.5, Hexagonal Architecture, HTTP API with Web UI (htmx + Tailwind v4)
-3. **Recent work**: Updated Web UI template, added API endpoints, implemented sorting, toast notifications, autocomplete
-4. **Status**: Most tasks completed, commit created, ready for push if needed
+1. Overall Goal - What was the main objective
+2. Key Knowledge - Important project details, architecture, commands
+3. Recent Actions - What was actually done
+4. Current Plan - What's completed and what's next
 
-I'll create a structured markdown summary following the format specified.# Project Summary
+I'll write this in Russian as per the output language requirement.# Project Summary
 
 ## Overall Goal
-Обновить Web UI шаблон `index.html` под новый дизайн из `template.html` (Tailwind v4) и добавить недостающие API endpoints (`/api/platforms`, `/api/tags`, сортировка постов) для полноценной работы интерфейса jtpost.
+Полное удаление функционала «рекомендации» (endpoint `/api/next` и UI компоненты) из HTTP API и Web UI проекта jtpost.
 
 ## Key Knowledge
-- **Проект**: jtpost — CLI-инструмент для управления контент-пайплайном (Telegram + blog) на Go 1.25.5+
-- **Архитектура**: Hexagonal/Clean Architecture (`cmd/` + `internal/core/` + `internal/adapters/`)
-- **HTTP API**: Порт 8080, Web UI на htmx + Tailwind v4
-- **Жизненный цикл поста**: `idea` → `draft` → `ready` → `scheduled` → `published`
-- **Платформы**: `blog`, `telegram`
-- **Сборка**: `go build -o ./dist/jtpost ./cmd/jtpost`
-- **Тесты**: `go test ./...` — все проходят
-- **Запуск сервера**: `./dist/jtpost serve` или `go run cmd/jtpost/main.go serve`
-- **Web UI**: http://localhost:8080
-- **CLI команды**: 12 команд (init, new, list, show, status, edit, delete, publish, plan, stats, next, serve)
-- **Линтинг**: `golangci-lint` с расширенным набором линтеров
-- **Git commit**: d7010fc — feat(httpapi): обновить Web UI и добавить новые API endpoints
+- **Проект:** jtpost — CLI-инструмент для управления контент-пайплайном (Telegram + blog) на Go 1.25.5+
+- **Архитектура:** Hexagonal/Clean Architecture (`cmd/` + `internal/core/` + `internal/adapters/`)
+- **HTTP API:** Порт 8080, Web UI на htmx + Tailwind v4
+- **Сборка:** `go build -o ./dist/jtpost ./cmd/jtpost`
+- **Тесты:** `go test ./...` — все проходят
+- **Запуск сервера:** `./dist/jtpost serve` или `go run cmd/jtpost/main.go serve`
+- **CLI команды:** 12 команд (init, new, list, show, status, edit, delete, publish, plan, stats, next, serve)
+- **Жизненный цикл поста:** idea → draft → ready → scheduled → published
+- **Модуль:** `github.com/jtprogru/jtpost`
 
 ## Recent Actions
-- **Обновлён `index.html`**: Полный редизайн на Tailwind v4 (карточки статистики, sortable таблица, toast уведомления, autocomplete для тегов)
-- **Добавлены API endpoints**:
-  - `GET /api/platforms` — список доступных платформ
-  - `GET /api/tags` — список всех тегов из постов
-  - `GET /api/posts?sort=<field>&order=<asc|desc>` — сортировка постов
-- **Реализованы JS-функции**: `sortPosts()`, `platformsToString()`, `handlePlatforms()`, `handleTags()`
-- **Интеграция UI с API**: Загрузка платформ и тегов через autocomplete, отображение toast уведомлений
-- **Тестирование**: Все тесты PASS (httpapi, fsrepo)
-- **Сборка**: Успешно (`go build -o ./dist/jtpost ./cmd/jtpost`)
-- **Git commit**: Создан commit d7010fc с подробным описанием изменений (886 insertions, 344 deletions)
+- ✅ Удалён endpoint `GET /api/next` из `internal/adapters/httpapi/server.go`
+- ✅ Удалена функция `handleNext()` из сервера
+- ✅ Удалён UI блок «Рекомендуемый пост» из `index.html`
+- ✅ Удалена JavaScript-обработка ответа от `/api/next`
+- ✅ Удалены 3 вызова `htmx.trigger('#next-post')` (при сохранении/удалении/публикации)
+- ✅ Удалён тест `TestServer_HandleNext` из `server_test.go`
+- ✅ Тесты пройдены: все PASS
+- ✅ Сборка успешна
+- ✅ Создан git commit `d639c8d` — feat(httpapi): удалить функционал рекомендации (endpoint /api/next)
 
 ## Current Plan
-1. [DONE] Анализ текущей реализации и сравнение с `template.html`
-2. [DONE] Составление подробного плана работ
-3. [DONE] Обновление шаблона Web UI (`index.html`) под новый дизайн
-4. [DONE] Реализация недостающих API endpoints (`/api/platforms`, `/api/tags`, сортировка)
-5. [DONE] Интеграция нового UI с API (загрузка платформ, тегов, сортировка)
-6. [DONE] Тестирование функционала (тесты, сборка)
-7. [DONE] Создание git commit с описанием изменений
+1. [DONE] Удалить endpoint `/api/next` из `server.go`
+2. [DONE] Удалить функцию `handleNext` из `server.go`
+3. [DONE] Удалить UI компоненты рекомендации из `index.html`
+4. [DONE] Удалить вызовы `htmx.trigger('#next-post')` из JavaScript
+5. [DONE] Удалить тест `TestServer_HandleNext`
+6. [DONE] Проверить тесты и сборку
+7. [DONE] Создать git commit
 8. [TODO] При необходимости: `git push origin main`
 
 ---
 
 ## Summary Metadata
-**Update time**: 2026-03-12T08:34:05.154Z 
+**Update time**: 2026-03-12T09:11:04.132Z 
