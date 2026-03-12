@@ -547,7 +547,7 @@ func (s *Server) handlePlatforms(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Возвращаем список доступных платформ
-	platforms := []string{"telegram", "blog"}
+	platforms := []string{"telegram"}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string][]string{"platforms": platforms})

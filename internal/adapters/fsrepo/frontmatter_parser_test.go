@@ -185,8 +185,8 @@ func TestNormalizeFrontmatter_Platforms(t *testing.T) {
 	}{
 		{
 			name:         "array of platforms",
-			platformsRaw: []interface{}{"telegram", "blog"},
-			wantLength:   2,
+			platformsRaw: []interface{}{"telegram"},
+			wantLength:   1,
 			wantFirst:    "telegram",
 		},
 		{
@@ -396,7 +396,6 @@ func TestNormalizeFrontmatter_ExternalLinks(t *testing.T) {
 		"slug":  "test",
 		"external": map[string]interface{}{
 			"telegram_url": "https://t.me/test_post",
-			"blog_url":     "https://example.com/blog", // Должен игнорироваться
 		},
 	}
 
@@ -415,5 +414,4 @@ func TestNormalizeFrontmatter_ExternalLinks(t *testing.T) {
 	if post.External.TelegramURL != "https://t.me/test_post" {
 		t.Errorf("TelegramURL = %v, want https://t.me/test_post", post.External.TelegramURL)
 	}
-	// Blog URL не должен сохраняться
 }

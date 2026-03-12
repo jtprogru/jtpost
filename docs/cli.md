@@ -57,7 +57,7 @@ jtpost new "Заголовок поста" [флаги]
 
 | Флаг | Короткий | Описание | По умолчанию |
 |------|----------|----------|--------------|
-| `--platform` | `-P` | Платформы публикации (telegram) | blog |
+| `--platform` | `-P` | Платформы публикации (telegram) | telegram |
 | `--tag` | `-t` | Теги поста | - |
 | `--slug` | `-s` | Slug поста (генерируется автоматически) | из заголовка |
 | `--editor` | `-e` | Редактор для открытия файла | `$VISUAL` → `$EDITOR` → `vim` |
@@ -72,7 +72,7 @@ jtpost new "Мой первый пост"
 jtpost new "Обзор Go 1.25" --tag go --tag release
 
 # Создать пост для Telegram
-jtpost new "Новости" --platform telegram --platform blog
+jtpost new "Новости" --platform telegram
 
 # Создать с конкретным slug
 jtpost new "Статья" --slug my-article

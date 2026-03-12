@@ -164,7 +164,7 @@ jtpost/
 ├── cmd/jtpost/           # Точка входа CLI
 ├── internal/
 │   ├── core/             # Доменная модель и интерфейсы
-│   ├── adapters/         # Реализации (FS, Telegram, Blog)
+│   ├── adapters/         # Реализации (FS, Telegram)
 │   └── cli/              # Cobra команды
 ├── templates/            # Шаблоны постов
 ├── testdata/             # Тестовые данные

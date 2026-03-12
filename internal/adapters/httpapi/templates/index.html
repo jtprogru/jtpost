@@ -121,7 +121,6 @@
         >
           <option value="">Все платформы</option>
           <option value="telegram">Telegram</option>
-          <option value="blog">Blog</option>
         </select>
 
         <button
@@ -224,7 +223,6 @@
                 class="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="telegram">Telegram</option>
-                <option value="blog">Blog</option>
               </select>
             </div>
           </div>
@@ -275,10 +273,6 @@
               <label class="flex items-center gap-2 text-sm">
                 <input type="checkbox" id="publish-telegram" class="rounded border-slate-300" />
                 <span>Telegram</span>
-              </label>
-              <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" id="publish-blog" class="rounded border-slate-300" />
-                <span>Blog</span>
               </label>
             </div>
             <button
@@ -494,7 +488,6 @@
             publishSection.style.display = 'block';
             if (post.platforms) {
               document.getElementById('publish-telegram').checked = post.platforms.includes('telegram');
-              document.getElementById('publish-blog').checked = post.platforms.includes('blog');
             }
           } else {
             publishSection.style.display = 'none';
@@ -614,7 +607,6 @@
           // Устанавливаем чекбоксы платформ
           if (post.platforms) {
             document.getElementById('publish-telegram').checked = post.platforms.includes('telegram');
-            document.getElementById('publish-blog').checked = post.platforms.includes('blog');
           }
           
           // Скрываем форму редактирования, показываем только публикацию
@@ -636,9 +628,6 @@
 
       if (document.getElementById('publish-telegram').checked) {
         platforms.push('telegram');
-      }
-      if (document.getElementById('publish-blog').checked) {
-        platforms.push('blog');
       }
 
       if (platforms.length === 0) {
