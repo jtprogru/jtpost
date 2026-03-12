@@ -388,6 +388,7 @@ MIT
 ### Основное
 
 - **[ROADMAP.md](./ROADMAP.md)** — план развития проекта (версии 0.2.0, 0.3.0, 0.4.0, 1.0.0)
+- **[CHANGELOG.md](./CHANGELOG.md)** — история изменений проекта
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — руководство для участников проекта
 - **[docs/cli.md](./docs/cli.md)** — полное описание CLI команд с примерами
 - **[docs/api.md](./docs/api.md)** — документация HTTP API endpoints
