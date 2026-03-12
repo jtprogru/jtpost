@@ -2,7 +2,7 @@ package sqlite
 
 import (
 	"context"
-	"os"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,13 +11,10 @@ import (
 
 func TestSQLitePostRepository_CreateAndGetByID(t *testing.T) {
 	// Создаём временный файл БД
-	tmpFile, err := os.CreateTemp("", "jtpost_test_*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.db"
 
-	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile.Name()})
+	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,13 +62,10 @@ func TestSQLitePostRepository_CreateAndGetByID(t *testing.T) {
 }
 
 func TestSQLitePostRepository_GetBySlug(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "jtpost_test_*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.db"
 
-	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile.Name()})
+	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,13 +96,10 @@ func TestSQLitePostRepository_GetBySlug(t *testing.T) {
 }
 
 func TestSQLitePostRepository_List(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "jtpost_test_*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.db"
 
-	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile.Name()})
+	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,13 +162,10 @@ func TestSQLitePostRepository_List(t *testing.T) {
 }
 
 func TestSQLitePostRepository_Update(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "jtpost_test_*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.db"
 
-	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile.Name()})
+	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,13 +208,10 @@ func TestSQLitePostRepository_Update(t *testing.T) {
 }
 
 func TestSQLitePostRepository_Delete(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "jtpost_test_*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.db"
 
-	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile.Name()})
+	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,19 +236,16 @@ func TestSQLitePostRepository_Delete(t *testing.T) {
 	}
 
 	_, err = repo.GetByID(ctx, post.ID)
-	if err != core.ErrNotFound {
+	if !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
 
 func TestSQLitePostRepository_ImportPosts(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "jtpost_test_*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.db"
 
-	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile.Name()})
+	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,13 +283,10 @@ func TestSQLitePostRepository_ImportPosts(t *testing.T) {
 }
 
 func TestSQLitePostRepository_Count(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "jtpost_test_*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.db"
 
-	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile.Name()})
+	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,13 +325,10 @@ func TestSQLitePostRepository_Count(t *testing.T) {
 }
 
 func TestSQLitePostRepository_GetByID_NotFound(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "jtpost_test_*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmpFile.Name())
+	tmpDir := t.TempDir()
+	tmpFile := tmpDir + "/test.db"
 
-	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile.Name()})
+	repo, err := NewSQLitePostRepository(Config{DSN: tmpFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +337,7 @@ func TestSQLitePostRepository_GetByID_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err = repo.GetByID(ctx, "nonexistent")
-	if err != core.ErrNotFound {
+	if !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }

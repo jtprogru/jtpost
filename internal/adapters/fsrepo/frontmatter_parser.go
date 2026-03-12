@@ -29,7 +29,7 @@ type FrontmatterResult struct {
 	Type       FrontmatterType
 	HasFrontmatter bool
 	Content    string
-	Metadata   map[string]interface{}
+	Metadata   map[string]any
 	RawFrontmatter string // Исходный текст frontmatter
 }
 
@@ -48,7 +48,7 @@ func ParseFrontmatter(content string) (*FrontmatterResult, error) {
 			Type:       FrontmatterNone,
 			HasFrontmatter: false,
 			Content:    content,
-			Metadata:   make(map[string]interface{}),
+			Metadata:   make(map[string]any),
 			RawFrontmatter: "",
 		}, nil
 	}
@@ -68,7 +68,7 @@ func ParseFrontmatter(content string) (*FrontmatterResult, error) {
 			Type:       FrontmatterNone,
 			HasFrontmatter: false,
 			Content:    content,
-			Metadata:   make(map[string]interface{}),
+			Metadata:   make(map[string]any),
 			RawFrontmatter: "",
 		}, nil
 	}
@@ -97,8 +97,8 @@ func ParseFrontmatter(content string) (*FrontmatterResult, error) {
 }
 
 // parseYAMLToMap парсит YAML строку в map.
-func parseYAMLToMap(yamlStr string) (map[string]interface{}, error) {
-	var result map[string]interface{}
+func parseYAMLToMap(yamlStr string) (map[string]any, error) {
+	var result map[string]any
 	decoder := yaml.NewDecoder(strings.NewReader(yamlStr))
 	if err := decoder.Decode(&result); err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func NormalizeFrontmatter(result *FrontmatterResult, slug string) (*core.Post, e
 	// Извлекаем platforms
 	if platformsRaw, ok := metadata["platforms"]; ok {
 		switch v := platformsRaw.(type) {
-		case []interface{}:
+		case []any:
 			post.Platforms = make([]core.Platform, len(v))
 			for i, p := range v {
 				if pStr, ok := p.(string); ok {
@@ -175,7 +175,7 @@ func NormalizeFrontmatter(result *FrontmatterResult, slug string) (*core.Post, e
 	// Извлекаем tags
 	if tagsRaw, ok := metadata["tags"]; ok {
 		switch v := tagsRaw.(type) {
-		case []interface{}:
+		case []any:
 			post.Tags = make([]string, len(v))
 			for i, t := range v {
 				if tStr, ok := t.(string); ok {
@@ -215,7 +215,7 @@ func NormalizeFrontmatter(result *FrontmatterResult, slug string) (*core.Post, e
 
 	// Извлекаем external links
 	if externalRaw, ok := metadata["external"]; ok {
-		if externalMap, ok := externalRaw.(map[string]interface{}); ok {
+		if externalMap, ok := externalRaw.(map[string]any); ok {
 			if telegramURL, ok := externalMap["telegram_url"].(string); ok {
 				post.External.TelegramURL = telegramURL
 			}
@@ -227,7 +227,7 @@ func NormalizeFrontmatter(result *FrontmatterResult, slug string) (*core.Post, e
 }
 
 // parseTime парсит время из различных форматов.
-func parseTime(raw interface{}) (time.Time, error) {
+func parseTime(raw any) (time.Time, error) {
 	switch v := raw.(type) {
 	case time.Time:
 		return v, nil

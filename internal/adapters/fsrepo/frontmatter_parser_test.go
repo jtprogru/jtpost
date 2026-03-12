@@ -91,7 +91,7 @@ func TestNormalizeFrontmatter_NoFrontmatter(t *testing.T) {
 		Type:           FrontmatterNone,
 		HasFrontmatter: false,
 		Content:        "Just content",
-		Metadata:       make(map[string]interface{}),
+		Metadata:       make(map[string]any),
 	}
 
 	post, err := NormalizeFrontmatter(result, "my-slug")
@@ -114,11 +114,11 @@ func TestNormalizeFrontmatter_NoFrontmatter(t *testing.T) {
 }
 
 func TestNormalizeFrontmatter_WithYAML(t *testing.T) {
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"title":   "My Title",
 		"slug":    "my-slug",
 		"status":  "ready",
-		"tags":    []interface{}{"go", "cli"},
+		"tags":    []any{"go", "cli"},
 		"deadline": "2026-03-15",
 	}
 
@@ -152,7 +152,7 @@ func TestNormalizeFrontmatter_WithYAML(t *testing.T) {
 }
 
 func TestNormalizeFrontmatter_InvalidStatus(t *testing.T) {
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"title":  "Test",
 		"slug":   "test",
 		"status": "invalid_status",
@@ -179,13 +179,13 @@ func TestNormalizeFrontmatter_InvalidStatus(t *testing.T) {
 func TestNormalizeFrontmatter_Platforms(t *testing.T) {
 	tests := []struct {
 		name         string
-		platformsRaw interface{}
+		platformsRaw any
 		wantLength   int
 		wantFirst    string
 	}{
 		{
 			name:         "array of platforms",
-			platformsRaw: []interface{}{"telegram"},
+			platformsRaw: []any{"telegram"},
 			wantLength:   1,
 			wantFirst:    "telegram",
 		},
@@ -197,7 +197,7 @@ func TestNormalizeFrontmatter_Platforms(t *testing.T) {
 		},
 		{
 			name:         "empty array",
-			platformsRaw: []interface{}{},
+			platformsRaw: []any{},
 			wantLength:   1,
 			wantFirst:    "telegram", // default
 		},
@@ -205,7 +205,7 @@ func TestNormalizeFrontmatter_Platforms(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			metadata := map[string]interface{}{
+			metadata := map[string]any{
 				"title":     "Test",
 				"slug":      "test",
 				"platforms": tt.platformsRaw,
@@ -236,12 +236,12 @@ func TestNormalizeFrontmatter_Platforms(t *testing.T) {
 func TestNormalizeFrontmatter_Tags(t *testing.T) {
 	tests := []struct {
 		name      string
-		tagsRaw   interface{}
+		tagsRaw   any
 		wantCount int
 	}{
 		{
 			name:      "array of tags",
-			tagsRaw:   []interface{}{"go", "cli", "test"},
+			tagsRaw:   []any{"go", "cli", "test"},
 			wantCount: 3,
 		},
 		{
@@ -253,7 +253,7 @@ func TestNormalizeFrontmatter_Tags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			metadata := map[string]interface{}{
+			metadata := map[string]any{
 				"title": "Test",
 				"slug":  "test",
 				"tags":  tt.tagsRaw,
@@ -281,7 +281,7 @@ func TestNormalizeFrontmatter_Tags(t *testing.T) {
 func TestParseTime(t *testing.T) {
 	tests := []struct {
 		name    string
-		input   interface{}
+		input   any
 		wantErr bool
 	}{
 		{"time.Time", time.Now(), false},
@@ -327,7 +327,7 @@ func TestIsValidPostStatus(t *testing.T) {
 
 func TestBuildFrontmatter(t *testing.T) {
 	now := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
-	
+
 	post := &core.Post{
 		ID:          "test-id-123",
 		Title:       "Test Post",
@@ -391,10 +391,10 @@ func TestSerializePostWithFrontmatter(t *testing.T) {
 }
 
 func TestNormalizeFrontmatter_ExternalLinks(t *testing.T) {
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"title": "Test",
 		"slug":  "test",
-		"external": map[string]interface{}{
+		"external": map[string]any{
 			"telegram_url": "https://t.me/test_post",
 		},
 	}

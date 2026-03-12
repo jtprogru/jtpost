@@ -57,7 +57,6 @@ func TestValidateConfig(t *testing.T) {
 	}
 }
 
-//nolint:staticcheck // Проверка конструктора на nil — валидный паттерн тестирования.
 func TestNewPublisher(t *testing.T) {
 	cfg := Config{
 		BotToken:  "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
@@ -112,7 +111,6 @@ func TestPublisher_Publish_EmptyContent(t *testing.T) {
 	}
 }
 
-//nolint:staticcheck // Проверка указателя на nil — валидный паттерн тестирования.
 func TestPtrTime(t *testing.T) {
 	// Просто проверяем что функция работает
 	testTime := core.SystemClock{}.Now()

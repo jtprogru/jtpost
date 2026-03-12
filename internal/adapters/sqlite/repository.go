@@ -5,14 +5,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jtprogru/jtpost/internal/core"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // required for database/sql driver registration
 )
 
-// SQLitePostRepository реализация PostRepository на основе SQLite.
-type SQLitePostRepository struct {
+// PostRepository реализация PostRepository на основе SQLite.
+type PostRepository struct {
 	db *sql.DB
 }
 
@@ -23,19 +24,20 @@ type Config struct {
 }
 
 // NewSQLitePostRepository создаёт новый SQLite репозиторий.
-func NewSQLitePostRepository(cfg Config) (*SQLitePostRepository, error) {
+// Возвращает PostRepository для совместимости с интерфейсом core.PostRepository.
+func NewSQLitePostRepository(cfg Config) (*PostRepository, error) {
 	db, err := sql.Open("sqlite", cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка подключения к SQLite: %w", err)
 	}
 
 	// Включаем поддержку внешних ключей
-	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("ошибка включения foreign keys: %w", err)
 	}
 
-	repo := &SQLitePostRepository{db: db}
+	repo := &PostRepository{db: db}
 
 	// Выполняем миграции
 	if err := repo.migrate(); err != nil {
@@ -47,42 +49,34 @@ func NewSQLitePostRepository(cfg Config) (*SQLitePostRepository, error) {
 }
 
 // Close закрывает подключение к базе данных.
-func (r *SQLitePostRepository) Close() error {
+func (r *PostRepository) Close() error {
 	return r.db.Close()
 }
 
-// migrate выполняет миграцию схемы базы данных.
-func (r *SQLitePostRepository) migrate() error {
-	schema := `
-	CREATE TABLE IF NOT EXISTS posts (
-		id TEXT PRIMARY KEY,
-		title TEXT NOT NULL,
-		slug TEXT NOT NULL UNIQUE,
-		status TEXT NOT NULL,
-		platforms TEXT,
-		tags TEXT,
-		deadline TEXT,
-		scheduled_at TEXT,
-		published_at TEXT,
-		content TEXT NOT NULL,
-		telegram_url TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	);
+// BeginTx начинает транзакцию.
+func (r *PostRepository) BeginTx(ctx context.Context) (context.Context, func() error, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ошибка начала транзакции: %w", err)
+	}
 
-	CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
-	CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
-	CREATE INDEX IF NOT EXISTS idx_posts_platforms ON posts(platforms);
-	`
+	commit := func() error {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return nil
+	}
 
-	_, err := r.db.Exec(schema)
-	return err
+	// Возвращаем контекст с транзакцией
+	ctxWithTx := context.WithValue(ctx, txKey{}, tx)
+
+	return ctxWithTx, commit, nil
 }
 
 // GetByID возвращает пост по идентификатору.
-func (r *SQLitePostRepository) GetByID(ctx context.Context, id core.PostID) (*core.Post, error) {
+func (r *PostRepository) GetByID(ctx context.Context, id core.PostID) (*core.Post, error) {
 	query := `
-	SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at, 
+	SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at,
 	       published_at, content, telegram_url, created_at, updated_at
 	FROM posts WHERE id = ?
 	`
@@ -92,9 +86,9 @@ func (r *SQLitePostRepository) GetByID(ctx context.Context, id core.PostID) (*co
 }
 
 // GetBySlug возвращает пост по slug.
-func (r *SQLitePostRepository) GetBySlug(ctx context.Context, slug string) (*core.Post, error) {
+func (r *PostRepository) GetBySlug(ctx context.Context, slug string) (*core.Post, error) {
 	query := `
-	SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at, 
+	SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at,
 	       published_at, content, telegram_url, created_at, updated_at
 	FROM posts WHERE slug = ?
 	`
@@ -104,14 +98,15 @@ func (r *SQLitePostRepository) GetBySlug(ctx context.Context, slug string) (*cor
 }
 
 // List возвращает список постов с применением фильтров.
-func (r *SQLitePostRepository) List(ctx context.Context, filter core.PostFilter) ([]*core.Post, error) {
-	query := `
-	SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at, 
-	       published_at, content, telegram_url, created_at, updated_at
-	FROM posts WHERE 1=1
-	`
+func (r *PostRepository) List(ctx context.Context, filter core.PostFilter) ([]*core.Post, error) {
+	query := &strings.Builder{}
+	query.WriteString(`
+SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at,
+       published_at, content, telegram_url, created_at, updated_at
+FROM posts WHERE 1=1
+`)
 
-	args := make([]interface{}, 0)
+	args := make([]any, 0)
 
 	// Фильтр по статусам
 	if len(filter.Statuses) > 0 {
@@ -120,27 +115,27 @@ func (r *SQLitePostRepository) List(ctx context.Context, filter core.PostFilter)
 			placeholders[i] = "?"
 			args = append(args, string(status))
 		}
-		query += fmt.Sprintf(" AND status IN (%s)", joinStrings(placeholders))
+		fmt.Fprintf(query, " AND status IN (%s)", joinStrings(placeholders))
 	}
 
 	// Фильтр по тегам
 	if len(filter.Tags) > 0 {
 		for _, tag := range filter.Tags {
-			query += " AND tags LIKE ?"
+			query.WriteString(" AND tags LIKE ?")
 			args = append(args, "%"+tag+"%")
 		}
 	}
 
 	// Поиск по заголовку и содержимому
 	if filter.Search != "" {
-		query += " AND (title LIKE ? OR content LIKE ?)"
+		query.WriteString(" AND (title LIKE ? OR content LIKE ?)")
 		searchTerm := "%" + filter.Search + "%"
 		args = append(args, searchTerm, searchTerm)
 	}
 
-	query += " ORDER BY created_at DESC"
+	query.WriteString(" ORDER BY created_at DESC")
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query.String(), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -163,9 +158,9 @@ func (r *SQLitePostRepository) List(ctx context.Context, filter core.PostFilter)
 }
 
 // Create создаёт новый пост.
-func (r *SQLitePostRepository) Create(ctx context.Context, post *core.Post) error {
+func (r *PostRepository) Create(ctx context.Context, post *core.Post) error {
 	query := `
-	INSERT INTO posts (id, title, slug, status, platforms, tags, deadline, 
+	INSERT INTO posts (id, title, slug, status, platforms, tags, deadline,
 	                   scheduled_at, published_at, content, telegram_url, created_at, updated_at)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -209,9 +204,9 @@ func (r *SQLitePostRepository) Create(ctx context.Context, post *core.Post) erro
 }
 
 // Update обновляет существующий пост.
-func (r *SQLitePostRepository) Update(ctx context.Context, post *core.Post) error {
+func (r *PostRepository) Update(ctx context.Context, post *core.Post) error {
 	query := `
-	UPDATE posts 
+	UPDATE posts
 	SET title = ?, slug = ?, status = ?, platforms = ?, tags = ?,
 	    deadline = ?, scheduled_at = ?, published_at = ?,
 	    content = ?, telegram_url = ?, updated_at = ?
@@ -257,23 +252,25 @@ func (r *SQLitePostRepository) Update(ctx context.Context, post *core.Post) erro
 }
 
 // Delete удаляет пост.
-func (r *SQLitePostRepository) Delete(ctx context.Context, id core.PostID) error {
+func (r *PostRepository) Delete(ctx context.Context, id core.PostID) error {
 	query := `DELETE FROM posts WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, id)
 	return err
 }
 
 // ImportPosts импортирует посты из другого репозитория.
-func (r *SQLitePostRepository) ImportPosts(ctx context.Context, posts []*core.Post) error {
+func (r *PostRepository) ImportPosts(ctx context.Context, posts []*core.Post) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT OR REPLACE INTO posts 
-		(id, title, slug, status, platforms, tags, deadline, 
+		INSERT OR REPLACE INTO posts
+		(id, title, slug, status, platforms, tags, deadline,
 		 scheduled_at, published_at, content, telegram_url, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
@@ -326,42 +323,14 @@ func (r *SQLitePostRepository) ImportPosts(ctx context.Context, posts []*core.Po
 }
 
 // Count возвращает количество постов в хранилище.
-func (r *SQLitePostRepository) Count(ctx context.Context) (int64, error) {
+func (r *PostRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
 	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM posts").Scan(&count)
 	return count, err
 }
 
-// BeginTx начинает транзакцию.
-func (r *SQLitePostRepository) BeginTx(ctx context.Context) (context.Context, func() error, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("ошибка начала транзакции: %w", err)
-	}
-
-	commit := func() error {
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// Возвращаем контекст с транзакцией
-	ctxWithTx := context.WithValue(ctx, txKey{}, tx)
-
-	return ctxWithTx, commit, nil
-}
-
 // txKey ключ для хранения транзакции в контексте.
 type txKey struct{}
-
-// getTx извлекает транзакцию из контекста.
-func getTx(ctx context.Context) *sql.Tx {
-	if tx, ok := ctx.Value(txKey{}).(*sql.Tx); ok {
-		return tx
-	}
-	return nil
-}
 
 // scanPost сканирует пост из sql.Row.
 func scanPost(row *sql.Row) (*core.Post, error) {
@@ -430,7 +399,7 @@ func scanPost(row *sql.Row) (*core.Post, error) {
 }
 
 // scanPostRow сканирует пост из sql.Rows.
-func scanPostRow(rows interface{ Scan(...interface{}) error }) (*core.Post, error) {
+func scanPostRow(rows interface{ Scan(dest ...any) error }) (*core.Post, error) {
 	var (
 		id, title, slug, status, platformsJSON, tagsJSON string
 		deadline, scheduledAt, publishedAt               string
@@ -497,9 +466,40 @@ func joinStrings(strs []string) string {
 	if len(strs) == 0 {
 		return ""
 	}
-	result := strs[0]
+	var builder strings.Builder
+	builder.Grow(len(strs) * 2) // Оценка 2 символа на элемент (запятая + пробел)
+	builder.WriteString(strs[0])
 	for i := 1; i < len(strs); i++ {
-		result += ", " + strs[i]
+		builder.WriteString(", ")
+		builder.WriteString(strs[i])
 	}
-	return result
+	return builder.String()
+}
+
+// migrate выполняет миграцию схемы базы данных.
+func (r *PostRepository) migrate() error {
+	schema := `
+	CREATE TABLE IF NOT EXISTS posts (
+		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		slug TEXT NOT NULL UNIQUE,
+		status TEXT NOT NULL,
+		platforms TEXT,
+		tags TEXT,
+		deadline TEXT,
+		scheduled_at TEXT,
+		published_at TEXT,
+		content TEXT NOT NULL,
+		telegram_url TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
+	CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
+	CREATE INDEX IF NOT EXISTS idx_posts_platforms ON posts(platforms);
+	`
+
+	_, err := r.db.ExecContext(context.Background(), schema)
+	return err
 }
