@@ -656,7 +656,7 @@ func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Сортируем теги по алфавиту
-	for i := 0; i < len(tags)-1; i++ {
+	for i := range len(tags) - 1 {
 		for j := i + 1; j < len(tags); j++ {
 			if tags[i] > tags[j] {
 				tags[i], tags[j] = tags[j], tags[i]
