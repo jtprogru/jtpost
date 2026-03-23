@@ -5,7 +5,21 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+// mustParsePostID парсит строку в PostID или паникует при ошибке.
+// Используется только в тестах.
+func mustParsePostID(s string) PostID {
+	id, err := ParsePostID(s)
+	if err != nil {
+		// Fallback: генерируем UUID из строки используя SHA256
+		u := uuid.NewSHA1(uuid.NameSpaceOID, []byte(s))
+		return PostID(u)
+	}
+	return id
+}
 
 func TestPostService_CreatePost(t *testing.T) {
 	repo := &mockRepository{
@@ -24,9 +38,8 @@ func TestPostService_CreatePost(t *testing.T) {
 		{
 			name: "valid post creation",
 			input: CreatePostInput{
-				Title:     "Test Post",
-				Platforms: []Platform{PlatformTelegram},
-				Tags:      []string{"test", "go"},
+				Title: "Test Post",
+				Tags:  []string{"test", "go"},
 			},
 			wantErr: false,
 			checkPost: func(p *Post) bool {
@@ -64,16 +77,6 @@ func TestPostService_CreatePost(t *testing.T) {
 				return p.Slug == "custom-slug"
 			},
 		},
-		{
-			name: "default platform",
-			input: CreatePostInput{
-				Title: "Test Post",
-			},
-			wantErr: false,
-			checkPost: func(p *Post) bool {
-				return len(p.Platforms) == 1 && p.Platforms[0] == PlatformTelegram
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -107,11 +110,10 @@ func TestPostService_UpdateStatus(t *testing.T) {
 
 	// Создаём тестовый пост
 	initialPost := &Post{
-		ID:        "test-id",
+		ID:        mustParsePostID("test-id"),
 		Title:     "Test",
 		Slug:      "test",
 		Status:    StatusDraft,
-		Platforms: []Platform{PlatformTelegram},
 	}
 	repo.posts[initialPost.ID] = initialPost
 
@@ -122,12 +124,12 @@ func TestPostService_UpdateStatus(t *testing.T) {
 		wantErr   bool
 		checkErr  func(error) bool
 	}{
-		{"draft to ready", "test-id", StatusReady, false, nil},
-		{"draft to published", "test-id", StatusPublished, false, nil},
-		{"ready to draft", "test-id", StatusDraft, true, func(err error) bool {
+		{"draft to ready", mustParsePostID("test-id"), StatusReady, false, nil},
+		{"draft to published", mustParsePostID("test-id"), StatusPublished, false, nil},
+		{"ready to draft", mustParsePostID("test-id"), StatusDraft, true, func(err error) bool {
 			return err != nil
 		}},
-		{"not found", "non-existent", StatusReady, true, func(err error) bool {
+		{"not found", mustParsePostID("non-existent"), StatusReady, true, func(err error) bool {
 			return errors.Is(err, ErrNotFound)
 		}},
 	}
@@ -188,11 +190,10 @@ func TestPostService_DeletePost(t *testing.T) {
 
 	// Создаём тестовый пост
 	initialPost := &Post{
-		ID:        "test-id",
+		ID:        mustParsePostID("test-id"),
 		Title:     "Test",
 		Slug:      "test",
 		Status:    StatusDraft,
-		Platforms: []Platform{PlatformTelegram},
 	}
 	repo.posts[initialPost.ID] = initialPost
 
@@ -205,16 +206,16 @@ func TestPostService_DeletePost(t *testing.T) {
 	}{
 		{
 			name:    "delete existing post",
-			id:      "test-id",
+			id:      mustParsePostID("test-id"),
 			wantErr: false,
 			checkPost: func() bool {
-				_, exists := repo.posts["test-id"]
+				_, exists := repo.posts[mustParsePostID("test-id")]
 				return !exists // пост должен быть удалён
 			},
 		},
 		{
 			name:    "delete non-existent post",
-			id:      "non-existent",
+			id:      mustParsePostID("non-existent"),
 			wantErr: true,
 			checkErr: func(err error) bool {
 				return errors.Is(err, ErrNotFound)
@@ -331,35 +332,31 @@ func TestPostService_GetStats(t *testing.T) {
 	// Создаём тестовые посты
 	testPosts := []*Post{
 		{
-			ID:        "post-1",
+			ID:        mustParsePostID("post-1"),
 			Title:     "Draft Post",
 			Slug:      "draft-post",
 			Status:    StatusDraft,
-			Platforms: []Platform{PlatformTelegram},
 			Tags:      []string{"go", "tutorial"},
 		},
 		{
-			ID:        "post-2",
+			ID:        mustParsePostID("post-2"),
 			Title:     "Ready Post",
 			Slug:      "ready-post",
 			Status:    StatusReady,
-			Platforms: []Platform{PlatformTelegram},
 			Tags:      []string{"go", "news"},
 		},
 		{
-			ID:        "post-3",
+			ID:        mustParsePostID("post-3"),
 			Title:     "Published Post",
 			Slug:      "published-post",
 			Status:    StatusPublished,
-			Platforms: []Platform{PlatformTelegram},
 			Tags:      []string{"tutorial"},
 		},
 		{
-			ID:        "post-4",
+			ID:        mustParsePostID("post-4"),
 			Title:     "Another Draft",
 			Slug:      "another-draft",
 			Status:    StatusDraft,
-			Platforms: []Platform{PlatformTelegram},
 			Tags:      []string{"go", "cli"},
 		},
 	}
@@ -388,11 +385,6 @@ func TestPostService_GetStats(t *testing.T) {
 			if stats.ByStatus[status] != expected {
 				t.Errorf("GetStats() ByStatus[%s] = %d, want %d", status, stats.ByStatus[status], expected)
 			}
-		}
-
-		// Проверка по платформам
-		if stats.ByPlatform[PlatformTelegram] != 4 {
-			t.Errorf("GetStats() ByPlatform[telegram] = %d, want 4", stats.ByPlatform[PlatformTelegram])
 		}
 
 		// Проверка по тегам
@@ -426,10 +418,6 @@ func TestPostService_GetStats(t *testing.T) {
 
 		if len(stats.ByStatus) != 0 {
 			t.Errorf("GetStats() ByStatus should be empty")
-		}
-
-		if len(stats.ByPlatform) != 0 {
-			t.Errorf("GetStats() ByPlatform should be empty")
 		}
 
 		if len(stats.ByTag) != 0 {
@@ -469,62 +457,55 @@ func TestPostService_GetNextPost(t *testing.T) {
 	testPosts := []*Post{
 		{
 			// Пост с просроченным дедлайном — highest priority
-			ID:        "post-overdue",
+			ID:        mustParsePostID("post-overdue"),
 			Title:     "Overdue Post",
 			Slug:      "overdue-post",
 			Status:    StatusDraft,
-			Platforms: []Platform{PlatformTelegram},
 			Deadline:  &pastDeadline,
 		},
 		{
 			// Пост с будущим дедлайном
-			ID:        "post-with-deadline",
+			ID:        mustParsePostID("post-with-deadline"),
 			Title:     "Deadline Post",
 			Slug:      "deadline-post",
 			Status:    StatusIdea,
-			Platforms: []Platform{PlatformTelegram},
 			Deadline:  &futureDeadline,
 		},
 		{
 			// Пост со scheduled_at (просроченным)
-			ID:          "post-scheduled-past",
+			ID:          mustParsePostID("post-scheduled-past"),
 			Title:       "Past Scheduled Post",
 			Slug:        "past-scheduled-post",
 			Status:      StatusReady,
-			Platforms:   []Platform{PlatformTelegram},
 			ScheduledAt: &pastScheduled,
 		},
 		{
 			// Пост без дедлайна, статус ready
-			ID:        "post-ready",
+			ID:        mustParsePostID("post-ready"),
 			Title:     "Ready Post",
 			Slug:      "ready-post",
 			Status:    StatusReady,
-			Platforms: []Platform{PlatformTelegram},
 		},
 		{
 			// Пост без дедлайна, статус draft
-			ID:        "post-draft",
+			ID:        mustParsePostID("post-draft"),
 			Title:     "Draft Post",
 			Slug:      "draft-post",
 			Status:    StatusDraft,
-			Platforms: []Platform{PlatformTelegram},
 		},
 		{
 			// Пост без дедлайна, статус idea
-			ID:        "post-idea",
+			ID:        mustParsePostID("post-idea"),
 			Title:     "Idea Post",
 			Slug:      "idea-post",
 			Status:    StatusIdea,
-			Platforms: []Platform{PlatformTelegram},
 		},
 		{
 			// Опубликованный пост — должен быть исключён
-			ID:        "post-published",
+			ID:        mustParsePostID("post-published"),
 			Title:     "Published Post",
 			Slug:      "published-post",
 			Status:    StatusPublished,
-			Platforms: []Platform{PlatformTelegram},
 		},
 	}
 
@@ -543,7 +524,8 @@ func TestPostService_GetNextPost(t *testing.T) {
 		}
 
 		// Должен вернуться пост с просроченным дедлайном
-		if nextPost.ID != "post-overdue" {
+		expectedID := mustParsePostID("post-overdue")
+		if nextPost.ID != expectedID {
 			t.Errorf("GetNextPost() ID = %s, expected post-overdue", nextPost.ID)
 		}
 	})
@@ -567,8 +549,8 @@ func TestPostService_GetNextPost(t *testing.T) {
 	t.Run("only published posts returns nil", func(t *testing.T) {
 		publishedOnlyRepo := &mockRepository{
 			posts: map[PostID]*Post{
-				"pub1": {ID: "pub1", Title: "Pub 1", Slug: "pub-1", Status: StatusPublished},
-				"pub2": {ID: "pub2", Title: "Pub 2", Slug: "pub-2", Status: StatusScheduled},
+				mustParsePostID("pub1"): {ID: mustParsePostID("pub1"), Title: "Pub 1", Slug: "pub-1", Status: StatusPublished},
+				mustParsePostID("pub2"): {ID: mustParsePostID("pub2"), Title: "Pub 2", Slug: "pub-2", Status: StatusScheduled},
 			},
 		}
 		publishedService := NewPostService(publishedOnlyRepo, clock)

@@ -20,7 +20,10 @@ var editCmd = &cobra.Command{
 	Long:  `Открывает файл поста в редакторе для редактирования.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := core.PostID(args[0])
+		id, err := core.ParsePostID(args[0])
+		if err != nil {
+			return fmt.Errorf("неверный формат ID: %w", err)
+		}
 
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
@@ -85,7 +88,7 @@ func findPostFile(postsDir string, id core.PostID) (string, error) {
 		return "", err
 	}
 
-	idStr := string(id)
+	idStr := id.String()
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue

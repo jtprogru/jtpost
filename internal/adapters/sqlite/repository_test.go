@@ -6,8 +6,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/core"
 )
+
+// mustParsePostID парсит строку в PostID или паникует при ошибке.
+// Используется только в тестах.
+func mustParsePostID(s string) core.PostID {
+	id, err := core.ParsePostID(s)
+	if err != nil {
+		// Fallback: генерируем UUID из строки используя SHA1
+		u := uuid.NewSHA1(uuid.NameSpaceOID, []byte(s))
+		return core.PostID(u)
+	}
+	return id
+}
 
 func TestSQLitePostRepository_CreateAndGetByID(t *testing.T) {
 	// Создаём временный файл БД
@@ -25,11 +38,10 @@ func TestSQLitePostRepository_CreateAndGetByID(t *testing.T) {
 	// Создаём тестовый пост
 	deadline := time.Now().Add(24 * time.Hour)
 	post := &core.Post{
-		ID:       "test-id-1",
+		ID:       mustParsePostID("test-id-1"),
 		Title:    "Тестовый пост",
 		Slug:     "test-post",
 		Status:   core.StatusDraft,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Tags:     []string{"go", "test"},
 		Deadline: &deadline,
 		Content:  "Содержимое поста",
@@ -74,7 +86,7 @@ func TestSQLitePostRepository_GetBySlug(t *testing.T) {
 	ctx := context.Background()
 
 	post := &core.Post{
-		ID:      "test-id-2",
+		ID:      mustParsePostID("test-id-2"),
 		Title:   "Пост для slug",
 		Slug:    "my-slug",
 		Status:  core.StatusReady,
@@ -109,9 +121,9 @@ func TestSQLitePostRepository_List(t *testing.T) {
 
 	// Создаём несколько постов
 	posts := []*core.Post{
-		{ID: "1", Title: "Post 1", Slug: "post-1", Status: core.StatusDraft, Tags: []string{"go"}, Content: "Content 1"},
-		{ID: "2", Title: "Post 2", Slug: "post-2", Status: core.StatusReady, Tags: []string{"telegram"}, Content: "Content 2"},
-		{ID: "3", Title: "Post 3", Slug: "post-3", Status: core.StatusDraft, Tags: []string{"go", "cli"}, Content: "Content 3"},
+		{ID: mustParsePostID("1"), Title: "Post 1", Slug: "post-1", Status: core.StatusDraft, Tags: []string{"go"}, Content: "Content 1"},
+		{ID: mustParsePostID("2"), Title: "Post 2", Slug: "post-2", Status: core.StatusReady, Tags: []string{"telegram"}, Content: "Content 2"},
+		{ID: mustParsePostID("3"), Title: "Post 3", Slug: "post-3", Status: core.StatusDraft, Tags: []string{"go", "cli"}, Content: "Content 3"},
 	}
 
 	for _, p := range posts {
@@ -174,7 +186,7 @@ func TestSQLitePostRepository_Update(t *testing.T) {
 	ctx := context.Background()
 
 	post := &core.Post{
-		ID:      "update-id",
+		ID:      mustParsePostID("update-id"),
 		Title:   "Old Title",
 		Slug:    "old-slug",
 		Status:  core.StatusDraft,
@@ -220,7 +232,7 @@ func TestSQLitePostRepository_Delete(t *testing.T) {
 	ctx := context.Background()
 
 	post := &core.Post{
-		ID:      "delete-id",
+		ID:      mustParsePostID("delete-id"),
 		Title:   "ToDelete",
 		Slug:    "to-delete",
 		Status:  core.StatusDraft,
@@ -255,8 +267,8 @@ func TestSQLitePostRepository_ImportPosts(t *testing.T) {
 
 	// Создаём посты для импорта
 	posts := []*core.Post{
-		{ID: "imp-1", Title: "Import 1", Slug: "import-1", Status: core.StatusDraft, Content: "Content 1"},
-		{ID: "imp-2", Title: "Import 2", Slug: "import-2", Status: core.StatusReady, Content: "Content 2"},
+		{ID: mustParsePostID("imp-1"), Title: "Import 1", Slug: "import-1", Status: core.StatusDraft, Content: "Content 1"},
+		{ID: mustParsePostID("imp-2"), Title: "Import 2", Slug: "import-2", Status: core.StatusReady, Content: "Content 2"},
 	}
 
 	if err := repo.ImportPosts(ctx, posts); err != nil {
@@ -273,7 +285,7 @@ func TestSQLitePostRepository_ImportPosts(t *testing.T) {
 	}
 
 	// Проверяем данные
-	got, err := repo.GetByID(ctx, "imp-1")
+	got, err := repo.GetByID(ctx, mustParsePostID("imp-1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,8 +317,8 @@ func TestSQLitePostRepository_Count(t *testing.T) {
 
 	// Добавляем посты
 	posts := []*core.Post{
-		{ID: "c1", Title: "C1", Slug: "c1", Status: core.StatusDraft, Content: "C"},
-		{ID: "c2", Title: "C2", Slug: "c2", Status: core.StatusDraft, Content: "C"},
+		{ID: mustParsePostID("c1"), Title: "C1", Slug: "c1", Status: core.StatusDraft, Content: "C"},
+		{ID: mustParsePostID("c2"), Title: "C2", Slug: "c2", Status: core.StatusDraft, Content: "C"},
 	}
 
 	for _, p := range posts {
@@ -336,7 +348,7 @@ func TestSQLitePostRepository_GetByID_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err = repo.GetByID(ctx, "nonexistent")
+	_, err = repo.GetByID(ctx, mustParsePostID("nonexistent"))
 	if !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}

@@ -52,7 +52,7 @@ var migrateCmd = &cobra.Command{
 		fmt.Printf("═══════════════════════════════════════\n")
 		fmt.Printf("Источник: %s\n", sourceDir)
 		fmt.Printf("Назначение: %s\n", dbPath)
-		fmt.Printf("Сухой запуск: %v\n", migrateDryRun)
+		fmt.Printf("Тестовый запуск: %v\n", migrateDryRun)
 		fmt.Println()
 
 		// Создаём файловый репозиторий (источник)
@@ -74,7 +74,7 @@ var migrateCmd = &cobra.Command{
 			return nil
 		}
 
-		// Сухой запуск — показываем что будет мигрировано
+		// Тестовый запуск — показываем что будет мигрировано
 		if migrateDryRun {
 			fmt.Println("\n📋 Посты для миграции:")
 			for _, post := range allPosts {

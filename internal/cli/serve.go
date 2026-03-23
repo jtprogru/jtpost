@@ -56,16 +56,15 @@ var serveCmd = &cobra.Command{
 		// Создаём сервис
 		service := core.NewPostService(repo, core.SystemClock{})
 
-		// Создаём publishers
-		publishers := make(map[core.Platform]core.Publisher)
+		// Создаём publisher
+		var publisher core.Publisher
 
 		// Telegram publisher
 		if cfg.Telegram.BotToken != "" && cfg.Telegram.ChatID != "" {
-			tgPublisher := telegram.NewPublisher(telegram.Config{
+			publisher = telegram.NewPublisher(telegram.Config{
 				BotToken:  cfg.Telegram.BotToken,
 				ChannelID: cfg.Telegram.ChatID,
 			})
-			publishers[core.PlatformTelegram] = tgPublisher
 			log.Info("✅ Telegram publisher инициализирован")
 		} else {
 			log.Warn("⚠️  Telegram publisher не настроен (отсутствует конфигурация)")
@@ -73,9 +72,9 @@ var serveCmd = &cobra.Command{
 
 		// Создаём HTTP сервер с логгером
 		serverCfg := httpapi.ServerConfig{
-			Service:    service,
-			Publishers: publishers,
-			Logger:     log,
+			Service:   service,
+			Publisher: publisher,
+			Logger:    log,
 		}
 		server := httpapi.NewServerWithConfig(serverCfg)
 

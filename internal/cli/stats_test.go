@@ -33,38 +33,34 @@ func TestStatsCommand(t *testing.T) {
 
 	testPosts := []*core.Post{
 		{
-			ID:        "post-1",
+			ID:        mustParsePostID("post-1"),
 			Title:     "Draft Post 1",
 			Slug:      "draft-post-1",
 			Status:    core.StatusDraft,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"go", "tutorial"},
 			Content:   "Content 1",
 		},
 		{
-			ID:        "post-2",
+			ID:        mustParsePostID("post-2"),
 			Title:     "Draft Post 2",
 			Slug:      "draft-post-2",
 			Status:    core.StatusDraft,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"go", "cli"},
 			Content:   "Content 2",
 		},
 		{
-			ID:        "post-3",
+			ID:        mustParsePostID("post-3"),
 			Title:     "Ready Post",
 			Slug:      "ready-post",
 			Status:    core.StatusReady,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"go", "news"},
 			Content:   "Content 3",
 		},
 		{
-			ID:        "post-4",
+			ID:        mustParsePostID("post-4"),
 			Title:     "Published Post",
 			Slug:      "published-post",
 			Status:    core.StatusPublished,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"tutorial"},
 			Content:   "Content 4",
 		},
@@ -120,11 +116,6 @@ func TestStatsCommand(t *testing.T) {
 			t.Errorf("Expected 'published' status in output")
 		}
 
-		// Проверяем платформы
-		if !strings.Contains(output, "telegram") {
-			t.Errorf("Expected 'telegram' platform in output")
-		}
-
 		// Проверяем теги
 		if !strings.Contains(output, "go") {
 			t.Errorf("Expected 'go' tag in output")
@@ -162,9 +153,6 @@ func TestStatsCommand(t *testing.T) {
 		}
 		if !strings.Contains(output, `"by_status"`) {
 			t.Errorf("Expected 'by_status' in JSON output")
-		}
-		if !strings.Contains(output, `"by_platform"`) {
-			t.Errorf("Expected 'by_platform' in JSON output")
 		}
 		if !strings.Contains(output, `"by_tag"`) {
 			t.Errorf("Expected 'by_tag' in JSON output")
@@ -211,10 +199,9 @@ func TestStatsCommand(t *testing.T) {
 func TestStatsOutputFormats(t *testing.T) {
 	t.Run("printStatsTable empty stats", func(t *testing.T) {
 		stats := &core.PostStats{
-			Total:      0,
-			ByStatus:   make(map[core.PostStatus]int),
-			ByPlatform: make(map[core.Platform]int),
-			ByTag:      make(map[string]int),
+			Total:    0,
+			ByStatus: make(map[core.PostStatus]int),
+			ByTag:    make(map[string]int),
 		}
 
 		oldStdout := os.Stdout
@@ -246,9 +233,6 @@ func TestStatsOutputFormats(t *testing.T) {
 				core.StatusReady:     2,
 				core.StatusPublished: 1,
 			},
-			ByPlatform: map[core.Platform]int{
-				core.PlatformTelegram: 5,
-			},
 			ByTag: map[string]int{
 				"go":  3,
 				"cli": 2,
@@ -274,9 +258,6 @@ func TestStatsOutputFormats(t *testing.T) {
 		if !strings.Contains(output, "draft") {
 			t.Errorf("Expected 'draft' in output")
 		}
-		if !strings.Contains(output, "telegram") {
-			t.Errorf("Expected 'telegram' in output")
-		}
 	})
 }
 
@@ -286,9 +267,6 @@ func TestStatsJSONOutput(t *testing.T) {
 		ByStatus: map[core.PostStatus]int{
 			core.StatusDraft: 2,
 			core.StatusReady: 1,
-		},
-		ByPlatform: map[core.Platform]int{
-			core.PlatformTelegram: 3,
 		},
 		ByTag: map[string]int{
 			"go":  2,

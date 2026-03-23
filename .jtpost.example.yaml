@@ -7,5 +7,3 @@ telegram:
 
 defaults:
   status: idea
-  platforms:
-    - telegram

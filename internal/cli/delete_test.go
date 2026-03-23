@@ -21,11 +21,10 @@ func TestDeletePost(t *testing.T) {
 	}
 
 	testPost := &core.Post{
-		ID:        "test-delete-id",
+		ID:        mustParsePostID("test-delete-id"),
 		Title:     "Test Delete Post",
 		Slug:      "test-delete-post",
 		Status:    core.StatusDraft,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Content:   "Test content",
 	}
 
@@ -51,7 +50,7 @@ func TestDeletePost(t *testing.T) {
 	})
 
 	t.Run("delete non-existent post", func(t *testing.T) {
-		err := service.DeletePost(ctx, "non-existent-id")
+		err := service.DeletePost(ctx, mustParsePostID("non-existent-id"))
 		if err == nil {
 			t.Errorf("DeletePost() expected error, got nil")
 		}
@@ -77,11 +76,10 @@ func TestDeleteCommandIntegration(t *testing.T) {
 	}
 
 	testPost := &core.Post{
-		ID:        "test-integration-id",
+		ID:        mustParsePostID("test-integration-id"),
 		Title:     "Test Integration Post",
 		Slug:      "test-integration-post",
 		Status:    core.StatusDraft,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Content:   "Test content",
 	}
 

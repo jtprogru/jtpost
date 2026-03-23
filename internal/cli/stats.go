@@ -88,31 +88,6 @@ func printStatsTable(stats *core.PostStats) {
 
 	w.Flush()
 
-	// Платформы
-	fmt.Println("\n🌐 По платформам:")
-	w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "  ПЛАТФОРМА\tКОЛИЧЕСТВО")
-	fmt.Fprintln(w, "  ---------\t--------")
-
-	platforms := make([]core.Platform, 0, len(stats.ByPlatform))
-	for platform := range stats.ByPlatform {
-		platforms = append(platforms, platform)
-	}
-	slices.SortFunc(platforms, func(a, b core.Platform) int {
-		if string(a) < string(b) {
-			return -1
-		}
-		if string(a) > string(b) {
-			return 1
-		}
-		return 0
-	})
-
-	for _, platform := range platforms {
-		fmt.Fprintf(w, "  %s\t%d\n", platform, stats.ByPlatform[platform])
-	}
-	w.Flush()
-
 	// Теги
 	fmt.Println("\n🏷️ По тегам:")
 	w = tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)

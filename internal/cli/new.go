@@ -16,10 +16,9 @@ import (
 )
 
 var (
-	newPlatforms []string
-	newTags      []string
-	newSlug      string
-	newEditor    string
+	newTags   []string
+	newSlug   string
+	newEditor string
 )
 
 var newCmd = &cobra.Command{
@@ -46,28 +45,11 @@ var newCmd = &cobra.Command{
 		// Создаём сервис
 		service := core.NewPostService(repo, core.SystemClock{})
 
-		// Преобразуем строки платформ в типы
-		platforms, err := parsePlatforms(newPlatforms)
-		if err != nil {
-			return err
-		}
-
-		// Если платформы не указаны, используем значения по умолчанию
-		if len(platforms) == 0 {
-			for _, p := range cfg.Defaults.Platforms {
-				platforms = append(platforms, core.Platform(p))
-			}
-			if len(platforms) == 0 {
-				platforms = []core.Platform{core.PlatformTelegram}
-			}
-		}
-
 		// Создаём пост
 		post, err := service.CreatePost(cmd.Context(), core.CreatePostInput{
-			Title:     title,
-			Platforms: platforms,
-			Tags:      newTags,
-			Slug:      newSlug,
+			Title: title,
+			Tags:  newTags,
+			Slug:  newSlug,
 		})
 		if err != nil {
 			return fmt.Errorf("ошибка создания поста: %w", err)
@@ -79,7 +61,6 @@ var newCmd = &cobra.Command{
 		fmt.Printf("✅ Пост создан: %s\n", post.Title)
 		fmt.Printf("📁 Файл: %s\n", filePath)
 		fmt.Printf("🏷️  Статус: %s\n", post.Status)
-		fmt.Printf("📝 Платформы: %v\n", post.Platforms)
 
 		// Открываем в редакторе
 		if err := openInEditor(filePath, newEditor); err != nil {
@@ -91,7 +72,6 @@ var newCmd = &cobra.Command{
 }
 
 func init() {
-	newCmd.Flags().StringSliceVarP(&newPlatforms, "platform", "P", []string{}, "платформы публикации (telegram)")
 	newCmd.Flags().StringSliceVarP(&newTags, "tag", "t", []string{}, "теги поста")
 	newCmd.Flags().StringVarP(&newSlug, "slug", "s", "", "slug поста (по умолчанию генерируется из заголовка)")
 	newCmd.Flags().StringVarP(&newEditor, "editor", "e", "", "редактор для открытия файла (по умолчанию $VISUAL или $EDITOR)")
@@ -111,20 +91,6 @@ func loadConfigOrCreateDefault(path string) (*config.Config, error) {
 		}
 	}
 	return cfg, nil
-}
-
-// parsePlatforms преобразует строки платформ в типы.
-func parsePlatforms(strs []string) ([]core.Platform, error) {
-	var platforms []core.Platform
-	for _, s := range strs {
-		switch strings.ToLower(s) {
-		case "telegram":
-			platforms = append(platforms, core.PlatformTelegram)
-		default:
-			return nil, fmt.Errorf("%w: неизвестная платформа '%s' (допустима: telegram)", core.ErrInvalidPlatform, s)
-		}
-	}
-	return platforms, nil
 }
 
 // openInEditor открывает файл в редакторе.

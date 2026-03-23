@@ -39,49 +39,44 @@ func TestPlanCommand(t *testing.T) {
 
 	testPosts := []*core.Post{
 		{
-			ID:          "post-1",
+			ID:          mustParsePostID("post-1"),
 			Title:       "Tomorrow Deadline",
 			Slug:        "tomorrow-deadline",
 			Status:      core.StatusDraft,
-			Platforms:   []core.Platform{core.PlatformTelegram},
 			Tags:        []string{"go", "tutorial"},
 			Content:     "Content 1",
 			Deadline:    &tomorrow,
 		},
 		{
-			ID:          "post-2",
+			ID:          mustParsePostID("post-2"),
 			Title:       "Next Week Scheduled",
 			Slug:        "next-week-scheduled",
 			Status:      core.StatusReady,
-			Platforms:   []core.Platform{core.PlatformTelegram},
 			Tags:        []string{"go", "cli"},
 			Content:     "Content 2",
 			ScheduledAt: &nextWeek,
 		},
 		{
-			ID:        "post-3",
+			ID:        mustParsePostID("post-3"),
 			Title:     "Published Post",
 			Slug:      "published-post",
 			Status:    core.StatusPublished,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"news"},
 			Content:   "Content 3",
 		},
 		{
-			ID:        "post-4",
+			ID:        mustParsePostID("post-4"),
 			Title:     "No Date Post",
 			Slug:      "no-date-post",
 			Status:    core.StatusDraft,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"draft"},
 			Content:   "Content 4",
 		},
 		{
-			ID:          "post-5",
+			ID:          mustParsePostID("post-5"),
 			Title:       "Next Month Deadline",
 			Slug:        "next-month-deadline",
 			Status:      core.StatusIdea,
-			Platforms:   []core.Platform{core.PlatformTelegram},
 			Tags:        []string{"idea"},
 			Content:     "Content 5",
 			Deadline:    &nextMonth,
@@ -237,22 +232,20 @@ func TestPlanOutput(t *testing.T) {
 		posts := []*plannedPost{
 			{
 				Post: &core.Post{
-					ID:        "test-1",
+					ID:        mustParsePostID("test-1"),
 					Title:     "Test Post 1",
 					Slug:      "test-post-1",
 					Status:    core.StatusDraft,
-					Platforms: []core.Platform{core.PlatformTelegram},
 				},
 				Date:     deadline,
 				DateType: "deadline",
 			},
 			{
 				Post: &core.Post{
-					ID:        "test-2",
+					ID:        mustParsePostID("test-2"),
 					Title:     "Test Post 2",
 					Slug:      "test-post-2",
 					Status:    core.StatusReady,
-					Platforms: []core.Platform{core.PlatformTelegram},
 				},
 				Date:     deadline,
 				DateType: "schedule",
@@ -291,9 +284,9 @@ func TestSortByDate(t *testing.T) {
 	date3 := now.Add(12 * time.Hour)
 
 	posts := []*plannedPost{
-		{Post: &core.Post{ID: "1"}, Date: date1},
-		{Post: &core.Post{ID: "2"}, Date: date2},
-		{Post: &core.Post{ID: "3"}, Date: date3},
+		{Post: &core.Post{ID: mustParsePostID("1")}, Date: date1},
+		{Post: &core.Post{ID: mustParsePostID("2")}, Date: date2},
+		{Post: &core.Post{ID: mustParsePostID("3")}, Date: date3},
 	}
 
 	sortByDate(posts)

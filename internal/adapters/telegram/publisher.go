@@ -40,11 +40,6 @@ func NewPublisher(cfg Config) *Publisher {
 	}
 }
 
-// Platform возвращает платформу telegram.
-func (p *Publisher) Platform() core.Platform {
-	return "telegram"
-}
-
 // Publish публикует пост в Telegram канал.
 func (p *Publisher) Publish(ctx context.Context, post *core.Post) (*core.Post, error) {
 	if post.Content == "" {

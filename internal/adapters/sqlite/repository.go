@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -76,7 +77,7 @@ func (r *PostRepository) BeginTx(ctx context.Context) (context.Context, func() e
 // GetByID возвращает пост по идентификатору.
 func (r *PostRepository) GetByID(ctx context.Context, id core.PostID) (*core.Post, error) {
 	query := `
-	SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at,
+	SELECT id, title, slug, status, tags, deadline, scheduled_at,
 	       published_at, content, telegram_url, created_at, updated_at
 	FROM posts WHERE id = ?
 	`
@@ -88,7 +89,7 @@ func (r *PostRepository) GetByID(ctx context.Context, id core.PostID) (*core.Pos
 // GetBySlug возвращает пост по slug.
 func (r *PostRepository) GetBySlug(ctx context.Context, slug string) (*core.Post, error) {
 	query := `
-	SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at,
+	SELECT id, title, slug, status, tags, deadline, scheduled_at,
 	       published_at, content, telegram_url, created_at, updated_at
 	FROM posts WHERE slug = ?
 	`
@@ -101,7 +102,7 @@ func (r *PostRepository) GetBySlug(ctx context.Context, slug string) (*core.Post
 func (r *PostRepository) List(ctx context.Context, filter core.PostFilter) ([]*core.Post, error) {
 	query := &strings.Builder{}
 	query.WriteString(`
-SELECT id, title, slug, status, platforms, tags, deadline, scheduled_at,
+SELECT id, title, slug, status, tags, deadline, scheduled_at,
        published_at, content, telegram_url, created_at, updated_at
 FROM posts WHERE 1=1
 `)
@@ -160,17 +161,12 @@ FROM posts WHERE 1=1
 // Create создаёт новый пост.
 func (r *PostRepository) Create(ctx context.Context, post *core.Post) error {
 	query := `
-	INSERT INTO posts (id, title, slug, status, platforms, tags, deadline,
+	INSERT INTO posts (id, title, slug, status, tags, deadline,
 	                   scheduled_at, published_at, content, telegram_url, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	now := time.Now().Format(time.RFC3339)
-
-	platformsJSON, err := json.Marshal(post.Platforms)
-	if err != nil {
-		return err
-	}
 
 	tagsJSON, err := json.Marshal(post.Tags)
 	if err != nil {
@@ -194,7 +190,7 @@ func (r *PostRepository) Create(ctx context.Context, post *core.Post) error {
 
 	_, err = r.db.ExecContext(ctx, query,
 		post.ID, post.Title, post.Slug, string(post.Status),
-		string(platformsJSON), string(tagsJSON),
+		string(tagsJSON),
 		deadline, scheduledAt, publishedAt,
 		post.Content, post.External.TelegramURL,
 		now, now,
@@ -207,18 +203,13 @@ func (r *PostRepository) Create(ctx context.Context, post *core.Post) error {
 func (r *PostRepository) Update(ctx context.Context, post *core.Post) error {
 	query := `
 	UPDATE posts
-	SET title = ?, slug = ?, status = ?, platforms = ?, tags = ?,
+	SET title = ?, slug = ?, status = ?, tags = ?,
 	    deadline = ?, scheduled_at = ?, published_at = ?,
 	    content = ?, telegram_url = ?, updated_at = ?
 	WHERE id = ?
 	`
 
 	now := time.Now().Format(time.RFC3339)
-
-	platformsJSON, err := json.Marshal(post.Platforms)
-	if err != nil {
-		return err
-	}
 
 	tagsJSON, err := json.Marshal(post.Tags)
 	if err != nil {
@@ -242,7 +233,7 @@ func (r *PostRepository) Update(ctx context.Context, post *core.Post) error {
 
 	_, err = r.db.ExecContext(ctx, query,
 		post.Title, post.Slug, string(post.Status),
-		string(platformsJSON), string(tagsJSON),
+		string(tagsJSON),
 		deadline, scheduledAt, publishedAt,
 		post.Content, post.External.TelegramURL,
 		now, post.ID,
@@ -270,9 +261,9 @@ func (r *PostRepository) ImportPosts(ctx context.Context, posts []*core.Post) er
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO posts
-		(id, title, slug, status, platforms, tags, deadline,
+		(id, title, slug, status, tags, deadline,
 		 scheduled_at, published_at, content, telegram_url, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("ошибка подготовки statement: %w", err)
@@ -282,11 +273,6 @@ func (r *PostRepository) ImportPosts(ctx context.Context, posts []*core.Post) er
 	now := time.Now().Format(time.RFC3339)
 
 	for _, post := range posts {
-		platformsJSON, err := json.Marshal(post.Platforms)
-		if err != nil {
-			return err
-		}
-
 		tagsJSON, err := json.Marshal(post.Tags)
 		if err != nil {
 			return err
@@ -309,7 +295,7 @@ func (r *PostRepository) ImportPosts(ctx context.Context, posts []*core.Post) er
 
 		_, err = stmt.ExecContext(ctx,
 			post.ID, post.Title, post.Slug, string(post.Status),
-			string(platformsJSON), string(tagsJSON),
+			string(tagsJSON),
 			deadline, scheduledAt, publishedAt,
 			post.Content, post.External.TelegramURL,
 			now, now,
@@ -335,28 +321,19 @@ type txKey struct{}
 // scanPost сканирует пост из sql.Row.
 func scanPost(row *sql.Row) (*core.Post, error) {
 	var (
-		id, title, slug, status, platformsJSON, tagsJSON string
+		id, title, slug, status, tagsJSON string
 		deadline, scheduledAt, publishedAt               string
 		content, telegramURL, createdAt, updatedAt       string
 	)
 
-	err := row.Scan(&id, &title, &slug, &status, &platformsJSON, &tagsJSON,
+	err := row.Scan(&id, &title, &slug, &status, &tagsJSON,
 		&deadline, &scheduledAt, &publishedAt, &content, &telegramURL,
 		&createdAt, &updatedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, core.ErrNotFound
 		}
 		return nil, err
-	}
-
-	var platforms []core.Platform
-	if platformsJSON != "" {
-		if err := json.Unmarshal([]byte(platformsJSON), &platforms); err != nil {
-			platforms = []core.Platform{core.PlatformTelegram}
-		}
-	} else {
-		platforms = []core.Platform{core.PlatformTelegram}
 	}
 
 	var tags []string
@@ -364,12 +341,16 @@ func scanPost(row *sql.Row) (*core.Post, error) {
 		_ = json.Unmarshal([]byte(tagsJSON), &tags)
 	}
 
+	parsedID, err := core.ParsePostID(id)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ID: %w", err)
+	}
+
 	post := &core.Post{
-		ID:        core.PostID(id),
+		ID:        parsedID,
 		Title:     title,
 		Slug:      slug,
 		Status:    core.PostStatus(status),
-		Platforms: platforms,
 		Tags:      tags,
 		Content:   content,
 		External: core.ExternalLinks{
@@ -401,25 +382,16 @@ func scanPost(row *sql.Row) (*core.Post, error) {
 // scanPostRow сканирует пост из sql.Rows.
 func scanPostRow(rows interface{ Scan(dest ...any) error }) (*core.Post, error) {
 	var (
-		id, title, slug, status, platformsJSON, tagsJSON string
+		id, title, slug, status, tagsJSON string
 		deadline, scheduledAt, publishedAt               string
 		content, telegramURL, createdAt, updatedAt       string
 	)
 
-	err := rows.Scan(&id, &title, &slug, &status, &platformsJSON, &tagsJSON,
+	err := rows.Scan(&id, &title, &slug, &status, &tagsJSON,
 		&deadline, &scheduledAt, &publishedAt, &content, &telegramURL,
 		&createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
-	}
-
-	var platforms []core.Platform
-	if platformsJSON != "" {
-		if err := json.Unmarshal([]byte(platformsJSON), &platforms); err != nil {
-			platforms = []core.Platform{core.PlatformTelegram}
-		}
-	} else {
-		platforms = []core.Platform{core.PlatformTelegram}
 	}
 
 	var tags []string
@@ -427,12 +399,16 @@ func scanPostRow(rows interface{ Scan(dest ...any) error }) (*core.Post, error) 
 		_ = json.Unmarshal([]byte(tagsJSON), &tags)
 	}
 
+	parsedID, err := core.ParsePostID(id)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ID: %w", err)
+	}
+
 	post := &core.Post{
-		ID:        core.PostID(id),
+		ID:        parsedID,
 		Title:     title,
 		Slug:      slug,
 		Status:    core.PostStatus(status),
-		Platforms: platforms,
 		Tags:      tags,
 		Content:   content,
 		External: core.ExternalLinks{
@@ -484,7 +460,6 @@ func (r *PostRepository) migrate() error {
 		title TEXT NOT NULL,
 		slug TEXT NOT NULL UNIQUE,
 		status TEXT NOT NULL,
-		platforms TEXT,
 		tags TEXT,
 		deadline TEXT,
 		scheduled_at TEXT,
@@ -497,7 +472,6 @@ func (r *PostRepository) migrate() error {
 
 	CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 	CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
-	CREATE INDEX IF NOT EXISTS idx_posts_platforms ON posts(platforms);
 	`
 
 	_, err := r.db.ExecContext(context.Background(), schema)

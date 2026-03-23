@@ -22,10 +22,9 @@ func NewPostService(repo PostRepository, clock Clock) *PostService {
 
 // CreatePostInput входные данные для создания поста.
 type CreatePostInput struct {
-	Title     string
-	Platforms []Platform
-	Tags      []string
-	Slug      string // опционально, если не указан — сгенерируем
+	Title  string
+	Tags   []string
+	Slug   string // опционально, если не указан — сгенерируем
 }
 
 // CreatePost создаёт новый пост.
@@ -41,18 +40,13 @@ func (s *PostService) CreatePost(ctx context.Context, in CreatePostInput) (*Post
 
 	now := s.clock.Now()
 	post := &Post{
-		ID:        PostID(fmt.Sprintf("%d-%s", now.UnixNano(), slug)),
-		Title:     in.Title,
-		Slug:      slug,
-		Status:    StatusIdea,
-		Platforms: in.Platforms,
-		Tags:      in.Tags,
-		Content:   "",
-		External:  ExternalLinks{},
-	}
-
-	if len(post.Platforms) == 0 {
-		post.Platforms = []Platform{PlatformTelegram}
+		ID:       GeneratePostID(slug, now),
+		Title:    in.Title,
+		Slug:     slug,
+		Status:   StatusIdea,
+		Tags:     in.Tags,
+		Content:  "",
+		External: ExternalLinks{},
 	}
 
 	if err := s.repo.Create(ctx, post); err != nil {
@@ -80,9 +74,9 @@ func (s *PostService) CreatePostWithContent(ctx context.Context, post *Post) err
 	if post.Slug == "" {
 		return ErrEmptySlug
 	}
-	if post.ID == "" {
+	if post.ID == (PostID{}) {
 		now := s.clock.Now()
-		post.ID = PostID(fmt.Sprintf("%d-%s", now.UnixNano(), post.Slug))
+		post.ID = GeneratePostID(post.Slug, now)
 	}
 	return s.repo.Create(ctx, post)
 }
@@ -135,10 +129,9 @@ func (s *PostService) DeletePost(ctx context.Context, id PostID) error {
 
 // PostStats статистика по постам.
 type PostStats struct {
-	Total      int                     `json:"total"`
-	ByStatus   map[PostStatus]int      `json:"by_status"`
-	ByPlatform map[Platform]int        `json:"by_platform"`
-	ByTag      map[string]int          `json:"by_tag"`
+	Total    int                `json:"total"`
+	ByStatus map[PostStatus]int `json:"by_status"`
+	ByTag    map[string]int     `json:"by_tag"`
 }
 
 // GetStats возвращает статистику по постам.
@@ -149,18 +142,13 @@ func (s *PostService) GetStats(ctx context.Context) (*PostStats, error) {
 	}
 
 	stats := &PostStats{
-		Total:      len(posts),
-		ByStatus:   make(map[PostStatus]int),
-		ByPlatform: make(map[Platform]int),
-		ByTag:      make(map[string]int),
+		Total:    len(posts),
+		ByStatus: make(map[PostStatus]int),
+		ByTag:    make(map[string]int),
 	}
 
 	for _, post := range posts {
 		stats.ByStatus[post.Status]++
-
-		for _, platform := range post.Platforms {
-			stats.ByPlatform[platform]++
-		}
 
 		for _, tag := range post.Tags {
 			stats.ByTag[tag]++
@@ -249,12 +237,10 @@ func postPriority(post *Post, now time.Time) int {
 }
 
 // PublishPostInput входные данные для публикации поста.
-type PublishPostInput struct {
-	Platforms []Platform
-}
+type PublishPostInput struct{}
 
-// PublishPost публикует пост на указанные платформы.
-func (s *PostService) PublishPost(ctx context.Context, id PostID, input PublishPostInput, publishers map[Platform]Publisher) (*Post, error) {
+// PublishPost публикует пост в Telegram.
+func (s *PostService) PublishPost(ctx context.Context, id PostID, _ PublishPostInput, publisher Publisher) (*Post, error) {
 	post, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -268,19 +254,11 @@ func (s *PostService) PublishPost(ctx context.Context, id PostID, input PublishP
 		return nil, fmt.Errorf("%w: пустой контент поста", ErrValidation)
 	}
 
-	// Публикуем на каждую платформу
-	for _, platform := range input.Platforms {
-		publisher, ok := publishers[platform]
-		if !ok {
-			return nil, fmt.Errorf("%w: publisher для платформы %s не найден", ErrNotFound, platform)
-		}
-
-		updatedPost, err := publisher.Publish(ctx, post)
-		if err != nil {
-			return nil, fmt.Errorf("ошибка публикации в %s: %w", platform, err)
-		}
-		post = updatedPost
+	updatedPost, err := publisher.Publish(ctx, post)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка публикации: %w", err)
 	}
+	post = updatedPost
 
 	// Обновляем статус на published
 	post.Status = StatusPublished

@@ -16,7 +16,10 @@ var deleteCmd = &cobra.Command{
 	Long:  `Удаляет пост по его идентификатору. Без флага --force запрашивает подтверждение.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := core.PostID(args[0])
+		id, err := core.ParsePostID(args[0])
+		if err != nil {
+			return fmt.Errorf("неверный формат ID: %w", err)
+		}
 
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
@@ -43,8 +46,7 @@ var deleteCmd = &cobra.Command{
 		// Запрашиваем подтверждение, если не указан --force
 		if !deleteForce {
 			fmt.Printf("📝 Пост: %s\n", post.Title)
-			fmt.Printf("   Статус: %s\n", post.Status)
-			fmt.Printf("   Платформы: %v\n\n", post.Platforms)
+			fmt.Printf("   Статус: %s\n\n", post.Status)
 			fmt.Print("⚠️  Вы уверены, что хотите удалить этот пост? [y/N]: ")
 
 			var response string

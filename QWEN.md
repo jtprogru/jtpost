@@ -7,7 +7,8 @@
 - **Модуль:** `github.com/jtprogru/jtpost`
 - **Go версия:** 1.25.5
 - **Архитектура:** Hexagonal/Clean Architecture (`cmd/` + `internal/core/` + `internal/adapters/`)
-- **Статус:** Ранняя стадия разработки (скелет проекта)
+- **Статус:** Версия 0.3.0 (UUID v7 миграция завершена)
+- **Формат ID:** UUID v7 (`uuid.UUID`)
 
 ## Структура проекта
 
@@ -15,16 +16,15 @@
 jtpost/
 ├── cmd/jtpost/main.go          # Точка входа CLI
 ├── internal/
-│   └── core/
-│       └── core.go             # Доменные типы (PostStatus, Platform)
+│   ├── core/                   # Доменная модель (Post, PostID, PostStatus)
+│   ├── adapters/               # Реализации (FS, SQLite, Telegram, HTTP)
+│   └── cli/                    # Cobra команды
 ├── .golangci.yaml              # Конфигурация линтера
 ├── .goreleaser.yaml            # Конфигурация релизов
 ├── Taskfile.yml                # Задачи сборки/тестирования
-├── mcp.json                    # MCP серверы
 ├── AGENTS.md                   # Руководство для AI-ассистентов
 ├── ROADMAP.md                  # Детальное описание архитектуры
-├── NextSteps.md                # Структура пакетов и интерфейсы
-└── MCP_SETUP.md                # Настройка MCP
+└── README.md                   # Основная документация
 ```
 
 ## Целевая архитектура
@@ -32,18 +32,18 @@ jtpost/
 ```
 internal/
 ├── core/                       # Доменная модель и use-case'ы
-│   ├── post.go                 # Тип Post, PostID, ExternalLinks
-│   ├── status.go               # PostStatus, Platform константы
+│   ├── post.go                 # Тип Post, PostID (UUID v7), ExternalLinks
+│   ├── status.go               # PostStatus константы
 │   ├── service.go              # PostService, PlanningService
 │   ├── publisher.go            # Интерфейс Publisher
 │   ├── repository.go           # Интерфейс PostRepository
 │   └── errors.go               # Доменные ошибки
 ├── adapters/                   # Реализации портов
 │   ├── fsrepo/                 # FilesystemPostRepository
+│   ├── sqlite/                 # SQLitePostRepository
 │   ├── config/                 # Конфигурация (.jtpost.yaml)
 │   ├── telegram/               # TelegramPublisher
-│   ├── blog/                   # BlogPublisher (Hugo/статик)
-│   └── httpapi/                # HTTP API (позже)
+│   └── httpapi/                # HTTP API + Web UI
 └── cli/                        # Cobra команды
     ├── root.go
     ├── init.go
@@ -107,25 +107,18 @@ go mod tidy
 PostStatus: "idea" → "draft" → "ready" → "scheduled" → "published"
 ```
 
-### Платформы
-
-```go
-Platform: "blog", "telegram"
-```
-
 ### Формат поста (Markdown + Frontmatter)
 
 ```yaml
 ---
+id: "0195e8d4-3c7a-7b2e-8f3a-9c5d6e4f2a1b"  # UUID v7
 title: "Заголовок"
 slug: "slug-name"
 status: "draft"
-platforms: ["blog", "telegram"]
 deadline: "2026-02-01"
 scheduled_at: "2026-02-03T10:00:00+03:00"
 tags: ["golang", "cli"]
 external:
-  blog_url: ""
   telegram_url: ""
 ---
 Тело поста в Markdown...
@@ -178,49 +171,44 @@ external:
 
 ## Roadmap (приоритеты)
 
+### Этап 7: Рефакторинг идентификаторов и упрощение архитектуры ✅
+- [x] Переход на UUID v7 (`uuid.UUID` вместо `string`)
+- [x] Удаление типа `Platform` и поля `Platforms`
+- [x] Обновление команды `publish` (без флага `--to`)
+- [ ] Отображение ID в CLI и Web UI
+- [ ] Чистка Web UI (удаление раздела публикации)
+
 ### Этап 0: Скелет CLI ✅
 - [x] Инициализация проекта
-- [ ] Команда `post init` (создание `.jtpost.yaml`)
-- [ ] Команда `post new` (создание поста по шаблону)
+- [x] Команда `jtpost init` (создание `.jtpost.yaml`)
+- [x] Команда `jtpost new` (создание поста по шаблону)
 
-### Этап 1: Жизненный цикл поста
-- [ ] `post list` (фильтры: статус, теги, платформы)
-- [ ] `post status <id> --set <status>` (смена статуса)
-- [ ] `post show <id>` (просмотр метаданных)
+### Этап 1: Жизненный цикл поста ✅
+- [x] `jtpost list` (фильтры: статус, теги)
+- [x] `jtpost status <id> --set <status>` (смена статуса)
+- [x] `jtpost show <id>` (просмотр метаданных)
 
-### Этап 2: Интеграция с блогом
-- [ ] `post publish --to blog <id>`
-- [ ] Поддержка Hugo-структуры
-- [ ] Опциональный git-commit
+### Этап 2: Интеграция с Telegram ✅
+- [x] `jtpost publish <id>` (публикация в Telegram)
+- [x] Конвертация Markdown → Telegram HTML/Markdown
+- [x] Сохранение `telegram_url` в frontmatter
 
-### Этап 3: Telegram
-- [ ] `post publish --to telegram <id>`
-- [ ] Конвертация Markdown → Telegram HTML/Markdown
-- [ ] Сохранение `telegram_url` в frontmatter
+### Этап 3: Импорт постов ✅
+- [x] `jtpost import` (импорт из `content/posts/`)
 
-### Этап 4: Планирование
-- [ ] `post plan` (календарь/дедлайны)
-- [ ] `post next` (рекомендация следующего поста)
-- [ ] `post stats` (статистика по постам)
+### Этап 4: Альтернативные хранилища ✅
+- [x] SQLite хранилище
+- [x] `jtpost migrate` (миграция между хранилищами)
 
-### Этап 5: HTTP API + Web UI
-- [ ] `post serve` (встроенный сервер)
-- [ ] REST API (`/posts`, `/posts/{id}`)
-- [ ] Простой HTML/htmx UI
+### Этап 5: Планирование и статистика ✅
+- [x] `jtpost plan` (план публикаций)
+- [x] `jtpost stats` (статистика по постам)
+- [x] `jtpost next` (рекомендация следующего поста)
 
-## MCP серверы
-
-Проект настроен для работы с MCP (Model Context Protocol):
-
-- **filesystem** — доступ к файловой системе
-- **git** — Git операции
-- **golangci-lint** — линтинг кода
-- **go-test** — запуск тестов
-- **context7** — документация по Go пакетам
-- **telegram** — Telegram Bot API (для этапа 3)
-- **github** — GitHub API (для code review)
-
-Конфигурация в `mcp.json` и `~/.qwen/mcp.json`.
+### Этап 6: HTTP API + Web UI ✅
+- [x] `jtpost serve` (встроенный сервер)
+- [x] REST API endpoints
+- [x] Web UI (htmx + Bootstrap)
 
 ## Принципы разработки
 
@@ -319,10 +307,8 @@ var newCmd = &cobra.Command{
 
 ## Ресурсы
 
-- [README.md](./README.md) — краткое описание
+- [README.md](./README.md) — основная документация
 - [ROADMAP.md](./ROADMAP.md) — детальное описание архитектуры
-- [NextSteps.md](./NextSteps.md) — структура пакетов и интерфейсы
 - [AGENTS.md](./AGENTS.md) — руководство для AI-ассистентов
 - [Taskfile.yml](./Taskfile.yml) — доступные команды
 - [.golangci.yaml](./.golangci.yaml) — правила линтинга
-- [MCP_SETUP.md](./MCP_SETUP.md) — настройка MCP

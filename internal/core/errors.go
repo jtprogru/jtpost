@@ -10,17 +10,15 @@ var (
 
 // Ошибки валидации.
 var (
-	ErrEmptyTitle     = errors.New("title cannot be empty")
-	ErrEmptySlug      = errors.New("slug cannot be empty")
-	ErrInvalidStatus  = errors.New("invalid status transition")
-	ErrInvalidPlatform = errors.New("invalid platform")
-	ErrValidation     = errors.New("validation error")
+	ErrEmptyTitle    = errors.New("title cannot be empty")
+	ErrEmptySlug     = errors.New("slug cannot be empty")
+	ErrInvalidStatus = errors.New("invalid status transition")
+	ErrValidation    = errors.New("validation error")
 )
 
 // Ошибки публикации.
 var (
 	ErrPublishFailed     = errors.New("failed to publish")
-	ErrUnknownPlatform   = errors.New("unknown platform")
 	ErrNotReadyToPublish = errors.New("post is not ready to publish")
 )
 

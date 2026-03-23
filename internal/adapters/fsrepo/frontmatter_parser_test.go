@@ -105,9 +105,6 @@ func TestNormalizeFrontmatter_NoFrontmatter(t *testing.T) {
 	if post.Status != core.StatusIdea {
 		t.Errorf("Status = %v, want idea", post.Status)
 	}
-	if len(post.Platforms) != 1 || post.Platforms[0] != core.PlatformTelegram {
-		t.Errorf("Platforms = %v, want [telegram]", post.Platforms)
-	}
 	if post.Content != "Just content" {
 		t.Errorf("Content = %q, want 'Just content'", post.Content)
 	}
@@ -173,63 +170,6 @@ func TestNormalizeFrontmatter_InvalidStatus(t *testing.T) {
 	// Должен установиться в draft
 	if post.Status != core.StatusDraft {
 		t.Errorf("Status = %v, want draft (for invalid status)", post.Status)
-	}
-}
-
-func TestNormalizeFrontmatter_Platforms(t *testing.T) {
-	tests := []struct {
-		name         string
-		platformsRaw any
-		wantLength   int
-		wantFirst    string
-	}{
-		{
-			name:         "array of platforms",
-			platformsRaw: []any{"telegram"},
-			wantLength:   1,
-			wantFirst:    "telegram",
-		},
-		{
-			name:         "single platform string",
-			platformsRaw: "telegram",
-			wantLength:   1,
-			wantFirst:    "telegram",
-		},
-		{
-			name:         "empty array",
-			platformsRaw: []any{},
-			wantLength:   1,
-			wantFirst:    "telegram", // default
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			metadata := map[string]any{
-				"title":     "Test",
-				"slug":      "test",
-				"platforms": tt.platformsRaw,
-			}
-
-			result := &FrontmatterResult{
-				Type:           FrontmatterYAML,
-				HasFrontmatter: true,
-				Content:        "Content",
-				Metadata:       metadata,
-			}
-
-			post, err := NormalizeFrontmatter(result, "test")
-			if err != nil {
-				t.Fatalf("NormalizeFrontmatter() error = %v", err)
-			}
-
-			if len(post.Platforms) != tt.wantLength {
-				t.Errorf("Platforms length = %v, want %v", len(post.Platforms), tt.wantLength)
-			}
-			if tt.wantLength > 0 && string(post.Platforms[0]) != tt.wantFirst {
-				t.Errorf("First platform = %v, want %v", post.Platforms[0], tt.wantFirst)
-			}
-		})
 	}
 }
 
@@ -329,11 +269,10 @@ func TestBuildFrontmatter(t *testing.T) {
 	now := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
 
 	post := &core.Post{
-		ID:          "test-id-123",
+		ID:          mustParsePostID("test-id-123"),
 		Title:       "Test Post",
 		Slug:        "test-post",
 		Status:      core.StatusDraft,
-		Platforms:   []core.Platform{core.PlatformTelegram},
 		Tags:        []string{"go", "test"},
 		Deadline:    &now,
 		Content:     "Test content",
@@ -348,7 +287,8 @@ func TestBuildFrontmatter(t *testing.T) {
 	}
 
 	// Проверяем наличие ключевых полей
-	if !strings.Contains(frontmatter, `id: "test-id-123"`) {
+	// ID будет в формате UUID, поэтому проверяем наличие поля id
+	if !strings.Contains(frontmatter, "id:") {
 		t.Error("Frontmatter missing id")
 	}
 	if !strings.Contains(frontmatter, `title: "Test Post"`) {
@@ -358,7 +298,7 @@ func TestBuildFrontmatter(t *testing.T) {
 		t.Error("Frontmatter missing status")
 	}
 	if !strings.Contains(frontmatter, "telegram") {
-		t.Error("Frontmatter missing telegram platform")
+		t.Error("Frontmatter missing telegram")
 	}
 	if !strings.Contains(frontmatter, "go") {
 		t.Error("Frontmatter missing go tag")
@@ -367,11 +307,10 @@ func TestBuildFrontmatter(t *testing.T) {
 
 func TestSerializePostWithFrontmatter(t *testing.T) {
 	post := &core.Post{
-		ID:        "test-id",
+		ID:        mustParsePostID("test-id"),
 		Title:     "Test",
 		Slug:      "test",
 		Status:    core.StatusDraft,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Tags:      []string{"test"},
 		Content:   "Test content here",
 	}

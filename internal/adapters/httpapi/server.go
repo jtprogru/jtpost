@@ -19,24 +19,24 @@ var indexTemplate string
 // Server HTTP сервер для API.
 type Server struct {
 	service    *core.PostService
-	publishers map[core.Platform]core.Publisher
+	publisher  core.Publisher
 	mux        *http.ServeMux
 	log        *logger.Logger
 }
 
 // ServerConfig конфигурация HTTP сервера.
 type ServerConfig struct {
-	Service    *core.PostService
-	Publishers map[core.Platform]core.Publisher
-	Logger     *logger.Logger
+	Service   *core.PostService
+	Publisher core.Publisher
+	Logger    *logger.Logger
 }
 
 // NewServer создаёт новый HTTP сервер.
-func NewServer(service *core.PostService, publishers map[core.Platform]core.Publisher) *Server {
+func NewServer(service *core.PostService, publisher core.Publisher) *Server {
 	return NewServerWithConfig(ServerConfig{
-		Service:    service,
-		Publishers: publishers,
-		Logger:     logger.NewDefault(),
+		Service:   service,
+		Publisher: publisher,
+		Logger:    logger.NewDefault(),
 	})
 }
 
@@ -48,10 +48,10 @@ func NewServerWithConfig(cfg ServerConfig) *Server {
 	}
 
 	s := &Server{
-		service:    cfg.Service,
-		publishers: cfg.Publishers,
-		mux:        http.NewServeMux(),
-		log:        log,
+		service:   cfg.Service,
+		publisher: cfg.Publisher,
+		mux:       http.NewServeMux(),
+		log:       log,
 	}
 	s.registerRoutes()
 	return s
@@ -73,7 +73,6 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/posts/", s.handlePostByID)
 	s.mux.HandleFunc("/api/stats", s.handleStats)
 	s.mux.HandleFunc("/api/plan", s.handlePlan)
-	s.mux.HandleFunc("/api/platforms", s.handlePlatforms)
 	s.mux.HandleFunc("/api/tags", s.handleTags)
 	s.mux.HandleFunc("/", s.handleIndex)
 }
@@ -114,11 +113,6 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		filter.Statuses = append(filter.Statuses, core.PostStatus(st))
 	}
 
-	platforms := r.URL.Query()["platform"]
-	for _, pl := range platforms {
-		filter.Platforms = append(filter.Platforms, core.Platform(pl))
-	}
-
 	tags := r.URL.Query()["tag"]
 	filter.Tags = tags
 
@@ -127,8 +121,8 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		filter.Search = search
 	}
 
-	s.log.Debug("ListPosts filter: statuses=%v, platforms=%v, tags=%v, search=%s",
-		filter.Statuses, filter.Platforms, filter.Tags, filter.Search)
+	s.log.Debug("ListPosts filter: statuses=%v, tags=%v, search=%s",
+		filter.Statuses, filter.Tags, filter.Search)
 
 	posts, err := s.service.ListPosts(ctx, filter)
 	if err != nil {
@@ -168,9 +162,6 @@ func sortPosts(posts []*core.Post, field, order string) {
 				core.StatusScheduled: 3, core.StatusPublished: 4,
 			}
 			less = statusOrder[posts[i].Status] < statusOrder[posts[j].Status]
-		case "platforms":
-			less = strings.Join(platformsToString(posts[i].Platforms), ",") <
-				strings.Join(platformsToString(posts[j].Platforms), ",")
 		case "tags":
 			less = strings.Join(posts[i].Tags, ",") < strings.Join(posts[j].Tags, ",")
 		case "deadline":
@@ -206,24 +197,14 @@ func sortPosts(posts []*core.Post, field, order string) {
 	}
 }
 
-// platformsToString конвертирует []Platform в []string.
-func platformsToString(platforms []core.Platform) []string {
-	result := make([]string, len(platforms))
-	for i, p := range platforms {
-		result[i] = string(p)
-	}
-	return result
-}
-
 // createPost обрабатывает POST /api/posts.
 func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var input struct {
-		Title     string   `json:"title"`
-		Slug      string   `json:"slug,omitempty"`
-		Platforms []string `json:"platforms,omitempty"`
-		Tags      []string `json:"tags,omitempty"`
+		Title string   `json:"title"`
+		Slug  string   `json:"slug,omitempty"`
+		Tags  []string `json:"tags,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -232,19 +213,12 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Конвертируем платформы
-	platforms := make([]core.Platform, len(input.Platforms))
-	for i, p := range input.Platforms {
-		platforms[i] = core.Platform(p)
-	}
-
-	s.log.Info("CreatePost title=%q, platforms=%v, tags=%v", input.Title, input.Platforms, input.Tags)
+	s.log.Info("CreatePost title=%q, tags=%v", input.Title, input.Tags)
 
 	post, err := s.service.CreatePost(ctx, core.CreatePostInput{
-		Title:     input.Title,
-		Slug:      input.Slug,
-		Platforms: platforms,
-		Tags:      input.Tags,
+		Title: input.Title,
+		Slug:  input.Slug,
+		Tags:  input.Tags,
 	})
 	if err != nil {
 		s.log.Error("CreatePost error: %v", err)
@@ -266,13 +240,22 @@ func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
 	// Проверяем, не является ли это запросом на публикацию
 	postID, ok := strings.CutSuffix(path, "/publish")
 	if ok {
-		s.publishPost(w, r, core.PostID(postID))
+		parsedID, err := core.ParsePostID(postID)
+		if err != nil {
+			http.Error(w, "Invalid post ID format", http.StatusBadRequest)
+			return
+		}
+		s.publishPost(w, r, parsedID)
 		return
 	}
 
-	id := core.PostID(postID)
+	id, err := core.ParsePostID(postID)
+	if err != nil {
+		http.Error(w, "Invalid post ID format", http.StatusBadRequest)
+		return
+	}
 
-	if id == "" {
+	if id == (core.PostID{}) {
 		http.Error(w, "Post ID required", http.StatusBadRequest)
 		return
 	}
@@ -490,7 +473,6 @@ type jsonPost struct {
 	Title       string        `json:"title"`
 	Slug        string        `json:"slug"`
 	Status      string        `json:"status"`
-	Platforms   []string      `json:"platforms,omitempty"`
 	Tags        []string      `json:"tags,omitempty"`
 	Deadline    *time.Time    `json:"deadline,omitempty"`
 	ScheduledAt *time.Time    `json:"scheduled_at,omitempty"`
@@ -506,17 +488,11 @@ type ExternalLinks struct {
 
 // toJSONPost конвертирует Post в jsonPost.
 func toJSONPost(post *core.Post) jsonPost {
-	platforms := make([]string, len(post.Platforms))
-	for i, p := range post.Platforms {
-		platforms[i] = string(p)
-	}
-
 	return jsonPost{
-		ID:          string(post.ID),
+		ID:          post.ID.String(),
 		Title:       post.Title,
 		Slug:        post.Slug,
 		Status:      string(post.Status),
-		Platforms:   platforms,
 		Tags:        post.Tags,
 		Deadline:    post.Deadline,
 		ScheduledAt: post.ScheduledAt,
@@ -537,33 +513,9 @@ func (s *Server) publishPost(w http.ResponseWriter, r *http.Request, id core.Pos
 
 	ctx := r.Context()
 
-	var input struct {
-		Platforms []string `json:"platforms"`
-	}
+	s.log.Info("PublishPost id=%s", id)
 
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		s.log.Warn("PublishPost decode error: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if len(input.Platforms) == 0 {
-		s.log.Warn("PublishPost platforms required, id=%s", id)
-		http.Error(w, "platforms required", http.StatusBadRequest)
-		return
-	}
-
-	// Конвертируем платформы
-	platforms := make([]core.Platform, len(input.Platforms))
-	for i, p := range input.Platforms {
-		platforms[i] = core.Platform(p)
-	}
-
-	s.log.Info("PublishPost id=%s, platforms=%v", id, input.Platforms)
-
-	post, err := s.service.PublishPost(ctx, id, core.PublishPostInput{
-		Platforms: platforms,
-	}, s.publishers)
+	post, err := s.service.PublishPost(ctx, id, core.PublishPostInput{}, s.publisher)
 	if err != nil {
 		// Логируем ошибку
 		s.log.Error("PublishPost error: %v, id=%s", err, id)
@@ -575,8 +527,6 @@ func (s *Server) publishPost(w http.ResponseWriter, r *http.Request, id core.Pos
 		case errors.Is(err, core.ErrValidation):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, core.ErrInvalidStatus):
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		case strings.Contains(err.Error(), "publisher для платформы"):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -602,27 +552,13 @@ type jsonPlannedPost struct {
 // toJSONPlannedPost конвертирует Post в jsonPlannedPost.
 func toJSONPlannedPost(post *core.Post, date time.Time, dateType string) jsonPlannedPost {
 	return jsonPlannedPost{
-		ID:       string(post.ID),
+		ID:       post.ID.String(),
 		Title:    post.Title,
 		Slug:     post.Slug,
 		Status:   string(post.Status),
 		Date:     date,
 		DateType: dateType,
 	}
-}
-
-// handlePlatforms обрабатывает GET /api/platforms.
-func (s *Server) handlePlatforms(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Возвращаем список доступных платформ
-	platforms := []string{"telegram"}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string][]string{"platforms": platforms})
 }
 
 // handleTags обрабатывает GET /api/tags.

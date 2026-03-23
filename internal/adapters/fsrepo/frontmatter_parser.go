@@ -117,7 +117,6 @@ func NormalizeFrontmatter(result *FrontmatterResult, slug string) (*core.Post, e
 
 	// Устанавливаем значения по умолчанию
 	post.Status = core.StatusIdea
-	post.Platforms = []core.Platform{core.PlatformTelegram}
 	post.Tags = []string{}
 
 	// Если нет frontmatter, возвращаем пост с дефолтными значениями
@@ -129,7 +128,10 @@ func NormalizeFrontmatter(result *FrontmatterResult, slug string) (*core.Post, e
 
 	// Извлекаем ID
 	if id, ok := metadata["id"].(string); ok && id != "" {
-		post.ID = core.PostID(id)
+		parsedID, err := core.ParsePostID(id)
+		if err == nil {
+			post.ID = parsedID
+		}
 	}
 
 	// Извлекаем title
@@ -149,27 +151,6 @@ func NormalizeFrontmatter(result *FrontmatterResult, slug string) (*core.Post, e
 		if !IsValidPostStatus(post.Status) {
 			post.Status = core.StatusDraft // По умолчанию draft для импортируемых
 		}
-	}
-
-	// Извлекаем platforms
-	if platformsRaw, ok := metadata["platforms"]; ok {
-		switch v := platformsRaw.(type) {
-		case []any:
-			post.Platforms = make([]core.Platform, len(v))
-			for i, p := range v {
-				if pStr, ok := p.(string); ok {
-					post.Platforms[i] = core.Platform(pStr)
-				}
-			}
-		case string:
-			// Если строка (например, "telegram"), оборачиваем в слайс
-			post.Platforms = []core.Platform{core.Platform(v)}
-		}
-	}
-
-	// Если платформы пустые, устанавливаем telegram по умолчанию
-	if len(post.Platforms) == 0 {
-		post.Platforms = []core.Platform{core.PlatformTelegram}
 	}
 
 	// Извлекаем tags
@@ -269,10 +250,10 @@ func BuildFrontmatter(post *core.Post) (string, error) {
 	var buf bytes.Buffer
 
 	buf.WriteString("---\n")
-	
+
 	// ID
-	if post.ID != "" {
-		writeYAMLField(&buf, "id", string(post.ID))
+	if post.ID != (core.PostID{}) {
+		writeYAMLField(&buf, "id", post.ID.String())
 	}
 	
 	// Title
@@ -287,16 +268,7 @@ func BuildFrontmatter(post *core.Post) (string, error) {
 	
 	// Status
 	writeYAMLField(&buf, "status", string(post.Status))
-	
-	// Platforms
-	if len(post.Platforms) > 0 {
-		platforms := make([]string, len(post.Platforms))
-		for i, p := range post.Platforms {
-			platforms[i] = string(p)
-		}
-		writeYAMLArray(&buf, "platforms", platforms)
-	}
-	
+
 	// Tags
 	if len(post.Tags) > 0 {
 		writeYAMLArray(&buf, "tags", post.Tags)

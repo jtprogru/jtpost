@@ -178,11 +178,10 @@ func processFile(ctx context.Context, filePath string, service *core.PostService
 	fmt.Printf("   Slug: %s\n", post.Slug)
 	fmt.Printf("   Заголовок: %s\n", post.Title)
 	fmt.Printf("   Статус: %s\n", post.Status)
-	fmt.Printf("   Платформы: %v\n", post.Platforms)
 	fmt.Printf("   Frontmatter: %s\n", frontmatterTypeString(result.Type))
 
 	// Генерируем ID если нет
-	if post.ID == "" {
+	if post.ID == (core.PostID{}) {
 		post.ID = core.GeneratePostID(post.Slug, time.Now())
 	}
 

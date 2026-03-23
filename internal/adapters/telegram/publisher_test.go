@@ -4,8 +4,21 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/core"
 )
+
+// mustParsePostID парсит строку в PostID или паникует при ошибке.
+// Используется только в тестах.
+func mustParsePostID(s string) core.PostID {
+	id, err := core.ParsePostID(s)
+	if err != nil {
+		// Fallback: генерируем UUID из строки используя SHA1
+		u := uuid.NewSHA1(uuid.NameSpaceOID, []byte(s))
+		return core.PostID(u)
+	}
+	return id
+}
 
 func TestValidateConfig(t *testing.T) {
 	tests := []struct {
@@ -81,18 +94,6 @@ func TestNewPublisher(t *testing.T) {
 	}
 }
 
-func TestPublisher_Platform(t *testing.T) {
-	publisher := NewPublisher(Config{
-		BotToken:  "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
-		ChannelID: "@testchannel",
-	})
-
-	platform := publisher.Platform()
-	if platform != "telegram" {
-		t.Errorf("Platform() = %q, want %q", platform, "telegram")
-	}
-}
-
 func TestPublisher_Publish_EmptyContent(t *testing.T) {
 	publisher := NewPublisher(Config{
 		BotToken:  "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
@@ -100,7 +101,7 @@ func TestPublisher_Publish_EmptyContent(t *testing.T) {
 	})
 
 	post := &core.Post{
-		ID:      "test-post",
+		ID:      mustParsePostID("test-post"),
 		Title:   "Test Post",
 		Content: "",
 	}

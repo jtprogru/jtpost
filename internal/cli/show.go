@@ -17,7 +17,10 @@ var showCmd = &cobra.Command{
 	Long:  `Выводит подробную информацию о посте по его идентификатору.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := core.PostID(args[0])
+		id, err := core.ParsePostID(args[0])
+		if err != nil {
+			return fmt.Errorf("неверный формат ID: %w", err)
+		}
 
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
@@ -64,7 +67,6 @@ func printPostDetails(post *core.Post) {
 	fmt.Printf("  ID:       %s\n", post.ID)
 	fmt.Printf("  Slug:     %s\n", post.Slug)
 	fmt.Printf("  Статус:   %s\n", post.Status)
-	fmt.Printf("  Платформы: %v\n", post.Platforms)
 	fmt.Printf("  Теги:     %v\n", post.Tags)
 
 	if post.Deadline != nil {

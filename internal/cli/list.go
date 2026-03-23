@@ -11,17 +11,17 @@ import (
 )
 
 var (
-	listStatuses  []string
-	listPlatforms []string
-	listTags      []string
-	listSearch    string
-	listFormat    string
+	listStatuses []string
+	listTags     []string
+	listSearch   string
+	listFormat   string
+	listNoID     bool
 )
 
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Список постов",
-	Long:  `Выводит список постов с возможностью фильтрации по статусу, платформам и тегам.`,
+	Long:  `Выводит список постов с возможностью фильтрации по статусу и тегам.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
@@ -48,10 +48,6 @@ var listCmd = &cobra.Command{
 			filter.Statuses = append(filter.Statuses, core.PostStatus(s))
 		}
 
-		for _, p := range listPlatforms {
-			filter.Platforms = append(filter.Platforms, core.Platform(p))
-		}
-
 		filter.Tags = listTags
 
 		// Получаем список постов
@@ -63,12 +59,12 @@ var listCmd = &cobra.Command{
 		// Выводим результат
 		switch listFormat {
 		case "table":
-			printTable(posts)
+			printTable(posts, listNoID)
 		case "json":
 			// TODO: реализовать JSON вывод
 			fmt.Printf("JSON формат будет реализован позже\n")
 		default:
-			printTable(posts)
+			printTable(posts, listNoID)
 		}
 
 		return nil
@@ -77,31 +73,29 @@ var listCmd = &cobra.Command{
 
 func init() {
 	listCmd.Flags().StringSliceVarP(&listStatuses, "status", "s", []string{}, "фильтр по статусам")
-	listCmd.Flags().StringSliceVarP(&listPlatforms, "platform", "P", []string{}, "фильтр по платформам")
 	listCmd.Flags().StringSliceVarP(&listTags, "tag", "t", []string{}, "фильтр по тегам")
 	listCmd.Flags().StringVarP(&listSearch, "search", "q", "", "поиск по заголовку/slug")
 	listCmd.Flags().StringVarP(&listFormat, "format", "f", "table", "формат вывода (table, json)")
+	listCmd.Flags().BoolVarP(&listNoID, "no-id", "", false, "скрыть колонку ID")
 }
 
-func printTable(posts []*core.Post) {
+func printTable(posts []*core.Post, showID bool) {
 	if len(posts) == 0 {
 		fmt.Println("Посты не найдены")
 		return
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "STATUS\tTITLE\tSLUG\tPLATFORMS\tTAGS")
-	fmt.Fprintln(w, "------\t-----\t----\t---------\t----")
+	
+	if showID {
+		fmt.Fprintln(w, "ID\tSTATUS\tTITLE\tSLUG\tTAGS")
+		fmt.Fprintln(w, "--\t------\t-----\t----\t----")
+	} else {
+		fmt.Fprintln(w, "STATUS\tTITLE\tSLUG\tTAGS")
+		fmt.Fprintln(w, "------\t-----\t----\t----")
+	}
 
 	for _, post := range posts {
-		platforms := ""
-		for i, p := range post.Platforms {
-			if i > 0 {
-				platforms += ", "
-			}
-			platforms += string(p)
-		}
-
 		tags := ""
 		for i, t := range post.Tags {
 			if i > 0 {
@@ -110,13 +104,22 @@ func printTable(posts []*core.Post) {
 			tags += t
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			post.Status,
-			truncateString(post.Title, 30),
-			post.Slug,
-			platforms,
-			tags,
-		)
+		if showID {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				post.ID,
+				post.Status,
+				truncateString(post.Title, 30),
+				post.Slug,
+				tags,
+			)
+		} else {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+				post.Status,
+				truncateString(post.Title, 30),
+				post.Slug,
+				tags,
+			)
+		}
 	}
 
 	w.Flush()

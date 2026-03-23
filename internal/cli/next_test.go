@@ -37,30 +37,27 @@ func TestNextCommand(t *testing.T) {
 
 	testPosts := []*core.Post{
 		{
-			ID:        "post-1",
+			ID:        mustParsePostID("post-1"),
 			Title:     "Overdue Post",
 			Slug:      "overdue-post",
 			Status:    core.StatusDraft,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"go", "tutorial"},
 			Content:   "Content 1",
 			Deadline:  &pastDeadline,
 		},
 		{
-			ID:        "post-2",
+			ID:        mustParsePostID("post-2"),
 			Title:     "Draft Post",
 			Slug:      "draft-post",
 			Status:    core.StatusDraft,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"go"},
 			Content:   "Content 2",
 		},
 		{
-			ID:        "post-3",
+			ID:        mustParsePostID("post-3"),
 			Title:     "Published Post",
 			Slug:      "published-post",
 			Status:    core.StatusPublished,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"news"},
 			Content:   "Content 3",
 		},
@@ -207,11 +204,10 @@ func TestNextOutputFormats(t *testing.T) {
 
 	t.Run("printNextFull", func(t *testing.T) {
 		post := &core.Post{
-			ID:        "test-id",
+			ID:        mustParsePostID("test-id"),
 			Title:     "Test Post",
 			Slug:      "test-post",
 			Status:    core.StatusDraft,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"go", "test"},
 			Deadline:  &now,
 		}
@@ -242,11 +238,10 @@ func TestNextOutputFormats(t *testing.T) {
 
 	t.Run("printNextJSON", func(t *testing.T) {
 		post := &core.Post{
-			ID:        "test-id",
+			ID:        mustParsePostID("test-id"),
 			Title:     "Test Post",
 			Slug:      "test-post",
 			Status:    core.StatusDraft,
-			Platforms: []core.Platform{core.PlatformTelegram},
 		}
 
 		oldStdout := os.Stdout

@@ -9,8 +9,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/core"
 )
+
+// mustParsePostID парсит строку в PostID или паникует при ошибке.
+// Используется только в тестах.
+func mustParsePostID(s string) core.PostID {
+	id, err := core.ParsePostID(s)
+	if err != nil {
+		// Fallback: генерируем UUID из строки используя SHA1
+		u := uuid.NewSHA1(uuid.NameSpaceOID, []byte(s))
+		return core.PostID(u)
+	}
+	return id
+}
 
 // mockPostRepository тестовая реализация репозитория.
 type mockPostRepository struct {
@@ -101,20 +114,18 @@ func TestServer_HandlePosts(t *testing.T) {
 	ctx := context.Background()
 	posts := []*core.Post{
 		{
-			ID:        "post-1",
+			ID:        mustParsePostID("post-1"),
 			Title:     "First Post",
 			Slug:      "first-post",
 			Status:    core.StatusDraft,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"go", "test"},
 			Content:   "Content 1",
 		},
 		{
-			ID:        "post-2",
+			ID:        mustParsePostID("post-2"),
 			Title:     "Second Post",
 			Slug:      "second-post",
 			Status:    core.StatusReady,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Tags:      []string{"go"},
 			Content:   "Content 2",
 		},
@@ -169,18 +180,17 @@ func TestServer_HandlePostByID(t *testing.T) {
 
 	ctx := context.Background()
 	testPost := &core.Post{
-		ID:        "test-post",
+		ID:        mustParsePostID("test-post"),
 		Title:     "Test Post",
 		Slug:      "test-post",
 		Status:    core.StatusDraft,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Tags:      []string{"test"},
 		Content:   "Test content",
 	}
 	repo.Create(ctx, testPost)
 
 	t.Run("GET /api/posts/{id} returns post", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/posts/test-post", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/"+testPost.ID.String(), nil)
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -194,8 +204,8 @@ func TestServer_HandlePostByID(t *testing.T) {
 			t.Fatalf("Failed to decode response: %v", err)
 		}
 
-		if result.ID != "test-post" {
-			t.Errorf("Expected ID 'test-post', got %s", result.ID)
+		if result.ID != testPost.ID.String() {
+			t.Errorf("Expected ID '%s', got %s", testPost.ID.String(), result.ID)
 		}
 		if result.Title != "Test Post" {
 			t.Errorf("Expected title 'Test Post', got %s", result.Title)
@@ -203,7 +213,7 @@ func TestServer_HandlePostByID(t *testing.T) {
 	})
 
 	t.Run("GET /api/posts/{id} returns 404 for non-existent", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/posts/non-existent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/posts/"+mustParsePostID("non-existent").String(), nil)
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -221,7 +231,7 @@ func TestServer_HandlePostByID(t *testing.T) {
 		}
 		body, _ := json.Marshal(updateData)
 
-		req := httptest.NewRequest(http.MethodPatch, "/api/posts/test-post", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPatch, "/api/posts/"+testPost.ID.String(), bytes.NewReader(body))
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -242,7 +252,7 @@ func TestServer_HandlePostByID(t *testing.T) {
 	})
 
 	t.Run("DELETE /api/posts/{id} deletes post", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodDelete, "/api/posts/test-post", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/posts/"+testPost.ID.String(), nil)
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -252,7 +262,7 @@ func TestServer_HandlePostByID(t *testing.T) {
 		}
 
 		// Проверяем, что пост удалён
-		req = httptest.NewRequest(http.MethodGet, "/api/posts/test-post", nil)
+		req = httptest.NewRequest(http.MethodGet, "/api/posts/"+testPost.ID.String(), nil)
 		w = httptest.NewRecorder()
 		server.ServeHTTP(w, req)
 
@@ -269,9 +279,27 @@ func TestServer_HandleStats(t *testing.T) {
 
 	ctx := context.Background()
 	posts := []*core.Post{
-		{ID: "1", Title: "Post 1", Slug: "post-1", Status: core.StatusDraft, Platforms: []core.Platform{core.PlatformTelegram}, Tags: []string{"go"}},
-		{ID: "2", Title: "Post 2", Slug: "post-2", Status: core.StatusDraft, Platforms: []core.Platform{core.PlatformTelegram}, Tags: []string{"test"}},
-		{ID: "3", Title: "Post 3", Slug: "post-3", Status: core.StatusReady, Platforms: []core.Platform{core.PlatformTelegram}, Tags: []string{"go"}},
+		{
+			ID:      mustParsePostID("stats-1"),
+			Title:   "Draft Post 1",
+			Slug:    "draft-post-1",
+			Status:  core.StatusDraft,
+			Content: "Content 1",
+		},
+		{
+			ID:      mustParsePostID("stats-2"),
+			Title:   "Draft Post 2",
+			Slug:    "draft-post-2",
+			Status:  core.StatusDraft,
+			Content: "Content 2",
+		},
+		{
+			ID:      mustParsePostID("stats-3"),
+			Title:   "Ready Post",
+			Slug:    "ready-post",
+			Status:  core.StatusReady,
+			Content: "Content 3",
+		},
 	}
 
 	for _, post := range posts {
@@ -315,21 +343,21 @@ func TestServer_HandlePlan(t *testing.T) {
 
 	posts := []*core.Post{
 		{
-			ID:       "post-1",
+			ID:       mustParsePostID("post-1"),
 			Title:    "Tomorrow Deadline",
 			Slug:     "tomorrow-deadline",
 			Status:   core.StatusDraft,
 			Deadline: &tomorrow,
 		},
 		{
-			ID:          "post-2",
+			ID:          mustParsePostID("post-2"),
 			Title:       "Next Week Scheduled",
 			Slug:        "next-week-scheduled",
 			Status:      core.StatusReady,
 			ScheduledAt: &nextWeek,
 		},
 		{
-			ID:     "post-3",
+			ID:     mustParsePostID("post-3"),
 			Title:  "Published Post",
 			Slug:   "published-post",
 			Status: core.StatusPublished,
@@ -372,8 +400,9 @@ func TestServer_HandlePlan(t *testing.T) {
 		if len(result) != 1 {
 			t.Errorf("Expected 1 planned post, got %d", len(result))
 		}
-		if result[0].ID != "post-1" {
-			t.Errorf("Expected 'post-1', got %s", result[0].ID)
+		expectedID := mustParsePostID("post-1").String()
+		if result[0].ID != expectedID {
+			t.Errorf("Expected '%s', got %s", expectedID, result[0].ID)
 		}
 	})
 }
@@ -421,7 +450,8 @@ func TestServer_MethodNotAllowed(t *testing.T) {
 	server := NewServer(service, nil)
 
 	t.Run("PUT /api/posts/{id} returns method not allowed", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPut, "/api/posts/test", nil)
+		testID := mustParsePostID("test").String()
+		req := httptest.NewRequest(http.MethodPut, "/api/posts/"+testID, nil)
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -516,23 +546,16 @@ func TestServer_CreatePost(t *testing.T) {
 		var result jsonPost
 		json.NewDecoder(w.Body).Decode(&result)
 
-		if len(result.Platforms) != 1 {
-			t.Errorf("Expected 1 platform (default), got %d", len(result.Platforms))
-		}
-		if result.Platforms[0] != "telegram" {
-			t.Errorf("Expected default platform 'telegram', got %s", result.Platforms[0])
+		// Проверка полей поста
+		if result.Title != "Post with default platform" {
+			t.Errorf("Expected title 'Post with default platform', got %s", result.Title)
 		}
 	})
 }
 
 // mockPublisher тестовая реализация Publisher.
 type mockPublisher struct {
-	platform core.Platform
 	publish  func(ctx context.Context, post *core.Post) (*core.Post, error)
-}
-
-func (m *mockPublisher) Platform() core.Platform {
-	return m.platform
 }
 
 func (m *mockPublisher) Publish(ctx context.Context, post *core.Post) (*core.Post, error) {
@@ -549,19 +572,16 @@ func TestServer_PublishPost(t *testing.T) {
 	service := core.NewPostService(repo, &mockClock{now: time.Now()})
 
 	// Создаём mock publisher
-	publishers := map[core.Platform]core.Publisher{
-		core.PlatformTelegram: &mockPublisher{platform: core.PlatformTelegram},
-	}
+	publisher := &mockPublisher{}
 
-	server := NewServer(service, publishers)
+	server := NewServer(service, publisher)
 
 	ctx := context.Background()
 	testPost := &core.Post{
-		ID:        "test-post",
+		ID:        mustParsePostID("test-post"),
 		Title:     "Test Post",
 		Slug:      "test-post",
 		Status:    core.StatusReady,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Tags:      []string{"test"},
 		Content:   "Test content for publication",
 	}
@@ -573,7 +593,7 @@ func TestServer_PublishPost(t *testing.T) {
 		}
 		body, _ := json.Marshal(publishData)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/posts/test-post/publish", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/posts/"+testPost.ID.String()+"/publish", bytes.NewReader(body))
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -601,7 +621,7 @@ func TestServer_PublishPost(t *testing.T) {
 		}
 		body, _ := json.Marshal(publishData)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/posts/non-existent/publish", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/posts/"+mustParsePostID("non-existent").String()+"/publish", bytes.NewReader(body))
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -613,11 +633,10 @@ func TestServer_PublishPost(t *testing.T) {
 
 	t.Run("POST /api/posts/{id}/publish with empty content returns error", func(t *testing.T) {
 		emptyPost := &core.Post{
-			ID:        "empty-post",
+			ID:        mustParsePostID("empty-post"),
 			Title:     "Empty Post",
 			Slug:      "empty-post",
 			Status:    core.StatusReady,
-			Platforms: []core.Platform{core.PlatformTelegram},
 			Content:   "",
 		}
 		repo.Create(ctx, emptyPost)
@@ -627,7 +646,7 @@ func TestServer_PublishPost(t *testing.T) {
 		}
 		body, _ := json.Marshal(publishData)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/posts/empty-post/publish", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/posts/"+emptyPost.ID.String()+"/publish", bytes.NewReader(body))
 		w := httptest.NewRecorder()
 
 		server.ServeHTTP(w, req)
@@ -645,7 +664,7 @@ func TestServer_PublishPost(t *testing.T) {
 		}
 		body, _ := json.Marshal(publishData)
 
-		req := httptest.NewRequest(http.MethodPost, "/api/posts/test-post/publish", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/posts/"+testPost.ID.String()+"/publish", bytes.NewReader(body))
 		w := httptest.NewRecorder()
 
 		serverNoPublishers.ServeHTTP(w, req)

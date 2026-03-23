@@ -91,16 +91,6 @@ func printNextFull(post *core.Post) {
 		fmt.Printf("📅 Запланировано: %s\n", post.ScheduledAt.Format("2006-01-02 15:04"))
 	}
 
-	// Платформы
-	var platformsBuilder strings.Builder
-	for i, p := range post.Platforms {
-		if i > 0 {
-			platformsBuilder.WriteString(", ")
-		}
-		platformsBuilder.WriteString(string(p))
-	}
-	fmt.Printf("🌐 Платформы: %s\n", platformsBuilder.String())
-
 	// Теги
 	var tagsBuilder strings.Builder
 	for i, t := range post.Tags {

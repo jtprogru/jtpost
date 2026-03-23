@@ -215,25 +215,6 @@ func matchesFilter(post *core.Post, filter core.PostFilter) bool {
 		}
 	}
 
-	// Фильтр по платформам
-	if len(filter.Platforms) > 0 {
-		found := false
-		for _, p := range filter.Platforms {
-			for _, postP := range post.Platforms {
-				if p == postP {
-					found = true
-					break
-				}
-			}
-			if found {
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-
 	// Фильтр по тегам
 	if len(filter.Tags) > 0 {
 		tagSet := make(map[string]bool)
@@ -288,9 +269,6 @@ func ParsePost(data []byte) (*core.Post, error) {
 	post.Content = strings.TrimSpace(string(body))
 
 	// Инициализируем пустые слайсы
-	if post.Platforms == nil {
-		post.Platforms = []core.Platform{}
-	}
 	if post.Tags == nil {
 		post.Tags = []string{}
 	}

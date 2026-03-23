@@ -13,7 +13,6 @@ import (
 )
 
 var (
-	publishTo     string
 	publishDryRun bool
 )
 
@@ -23,7 +22,10 @@ var publishCmd = &cobra.Command{
 	Long:  `Публикует пост в Telegram.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := core.PostID(args[0])
+		id, err := core.ParsePostID(args[0])
+		if err != nil {
+			return fmt.Errorf("неверный формат ID: %w", err)
+		}
 
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
@@ -52,19 +54,12 @@ var publishCmd = &cobra.Command{
 			return fmt.Errorf("%w: статус поста '%s' не позволяет публикацию (требуется ready или scheduled)", core.ErrNotReadyToPublish, post.Status)
 		}
 
-		// Публикация в Telegram
-		if publishTo == "telegram" {
-			return publishToTelegram(cmd.Context(), post, cfg, service)
-		}
-
-		return fmt.Errorf("неподдерживаемая платформа: %s", publishTo)
+		return publishToTelegram(cmd.Context(), post, cfg, service)
 	},
 }
 
 func init() {
-	publishCmd.Flags().StringVarP(&publishTo, "to", "t", "telegram", "платформа для публикации (telegram)")
 	publishCmd.Flags().BoolVarP(&publishDryRun, "dry-run", "d", false, "режим предпросмотра без публикации")
-	_ = publishCmd.MarkFlagRequired("to")
 }
 
 // publishToTelegram публикует пост в Telegram.

@@ -21,11 +21,10 @@ func TestFileSystemPostRepository_CreateAndGetByID(t *testing.T) {
 
 	now := time.Now()
 	post := &core.Post{
-		ID:        "test-id-123",
+		ID:        mustParsePostID("test-id-123"),
 		Title:     "Test Post",
 		Slug:      "test-post",
 		Status:    core.StatusDraft,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Tags:      []string{"test", "go"},
 		Deadline:  &now,
 		Content:   "Test content",
@@ -70,9 +69,30 @@ func TestFileSystemPostRepository_List(t *testing.T) {
 
 	// Создаём несколько постов
 	posts := []*core.Post{
-		{ID: "1", Title: "Post 1", Slug: "post-1", Status: core.StatusDraft, Platforms: []core.Platform{core.PlatformTelegram}, Tags: []string{"go"}},
-		{ID: "2", Title: "Post 2", Slug: "post-2", Status: core.StatusReady, Platforms: []core.Platform{}, Tags: []string{"cli"}},
-		{ID: "3", Title: "Post 3", Slug: "post-3", Status: core.StatusDraft, Platforms: []core.Platform{core.PlatformTelegram}, Tags: []string{"go", "test"}},
+		{
+			ID:      mustParsePostID("1"),
+			Title:   "Post 1",
+			Slug:    "post-1",
+			Status:  core.StatusDraft,
+			Tags:    []string{"go"},
+			Content: "Content 1",
+		},
+		{
+			ID:      mustParsePostID("2"),
+			Title:   "Post 2",
+			Slug:    "post-2",
+			Status:  core.StatusReady,
+			Tags:    []string{"telegram"},
+			Content: "Content 2",
+		},
+		{
+			ID:      mustParsePostID("3"),
+			Title:   "Post 3",
+			Slug:    "post-3",
+			Status:  core.StatusDraft,
+			Tags:    []string{"go", "cli"},
+			Content: "Content 3",
+		},
 	}
 
 	for _, p := range posts {
@@ -89,7 +109,6 @@ func TestFileSystemPostRepository_List(t *testing.T) {
 		{"no filter", core.PostFilter{}, 3},
 		{"filter by status draft", core.PostFilter{Statuses: []core.PostStatus{core.StatusDraft}}, 2},
 		{"filter by status ready", core.PostFilter{Statuses: []core.PostStatus{core.StatusReady}}, 1},
-		{"filter by platform telegram", core.PostFilter{Platforms: []core.Platform{core.PlatformTelegram}}, 2},
 		{"filter by tag go", core.PostFilter{Tags: []string{"go"}}, 2},
 		{"filter by search", core.PostFilter{Search: "Post 1"}, 1},
 	}
@@ -119,11 +138,10 @@ func TestFileSystemPostRepository_Update(t *testing.T) {
 	ctx := context.Background()
 
 	post := &core.Post{
-		ID:        "test-id",
+		ID:        mustParsePostID("test-id"),
 		Title:     "Original Title",
 		Slug:      "original-title",
 		Status:    core.StatusIdea,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Content:   "Original content",
 	}
 
@@ -168,11 +186,10 @@ func TestFileSystemPostRepository_Delete(t *testing.T) {
 	ctx := context.Background()
 
 	post := &core.Post{
-		ID:        "test-id",
+		ID:        mustParsePostID("test-id"),
 		Title:     "To Delete",
 		Slug:      "to-delete",
 		Status:    core.StatusIdea,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Content:   "Content",
 	}
 
@@ -211,7 +228,7 @@ func TestFileSystemPostRepository_GetByID_NotFound(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err = repo.GetByID(ctx, "non-existent-id")
+	_, err = repo.GetByID(ctx, mustParsePostID("non-existent-id"))
 	if err == nil {
 		t.Errorf("GetByID() error = nil, want ErrNotFound")
 	} else if !errors.Is(err, core.ErrNotFound) {
@@ -230,11 +247,10 @@ func TestFileSystemPostRepository_Create_AlreadyExists(t *testing.T) {
 	ctx := context.Background()
 
 	post := &core.Post{
-		ID:        "test-id",
+		ID:        mustParsePostID("test-id"),
 		Title:     "Test",
 		Slug:      "test",
 		Status:    core.StatusIdea,
-		Platforms: []core.Platform{core.PlatformTelegram},
 		Content:   "Content",
 	}
 
@@ -279,9 +295,6 @@ This is the post content.
 	if post.Status != core.StatusDraft {
 		t.Errorf("Status = %v, want draft", post.Status)
 	}
-	if len(post.Platforms) != 1 || post.Platforms[0] != core.PlatformTelegram {
-		t.Errorf("Platforms = %v, want [telegram]", post.Platforms)
-	}
 	if len(post.Tags) != 2 {
 		t.Errorf("Tags length = %v, want 2", len(post.Tags))
 	}
@@ -293,11 +306,10 @@ This is the post content.
 func TestSerializePost(t *testing.T) {
 	now := time.Now()
 	post := &core.Post{
-		ID:          "test-id",
+		ID:          mustParsePostID("test-id"),
 		Title:       "Test Post",
 		Slug:        "test-post",
 		Status:      core.StatusDraft,
-		Platforms:   []core.Platform{core.PlatformTelegram, core.PlatformTelegram},
 		Tags:        []string{"go", "test"},
 		Deadline:    &now,
 		ScheduledAt: &now,

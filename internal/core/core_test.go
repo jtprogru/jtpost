@@ -48,9 +48,3 @@ func TestPostStatusConstants(t *testing.T) {
 		}
 	}
 }
-
-func TestPlatformConstants(t *testing.T) {
-	if PlatformTelegram != "telegram" {
-		t.Errorf("PlatformTelegram = %s, expected 'telegram'", PlatformTelegram)
-	}
-}

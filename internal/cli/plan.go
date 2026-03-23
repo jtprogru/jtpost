@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -117,12 +118,9 @@ func printPlan(posts []*plannedPost) {
 			typeStr = "📋"
 		}
 
-		platforms := ""
-		for i, plat := range p.Post.Platforms {
-			if i > 0 {
-				platforms += ", "
-			}
-			platforms += string(plat)
+		tagsStr := "-"
+		if len(p.Post.Tags) > 0 {
+			tagsStr = strings.Join(p.Post.Tags, ", ")
 		}
 
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
@@ -130,7 +128,7 @@ func printPlan(posts []*plannedPost) {
 			typeStr,
 			p.Post.Status,
 			truncateString(p.Post.Title, 25),
-			platforms,
+			tagsStr,
 		)
 	}
 

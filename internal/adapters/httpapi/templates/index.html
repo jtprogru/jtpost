@@ -111,18 +111,6 @@
           <option value="published">Published</option>
         </select>
 
-        <select
-          name="platform"
-          class="border border-slate-300 rounded-md bg-white text-sm text-slate-700 px-3 py-1.5 shadow-sm"
-          hx-get="/api/posts"
-          hx-trigger="change"
-          hx-target="#posts-list"
-          hx-swap="innerHTML"
-        >
-          <option value="">Все платформы</option>
-          <option value="telegram">Telegram</option>
-        </select>
-
         <button
           class="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm whitespace-nowrap"
           onclick="openNewPostModal()"
@@ -142,11 +130,6 @@
                 data-sort="status"
                 onclick="handleSort('status')"
               >Статус</th>
-              <th
-                class="text-left px-3 py-2 font-semibold text-slate-600 sortable"
-                data-sort="platforms"
-                onclick="handleSort('platforms')"
-              >Платформы</th>
               <th
                 class="text-left px-3 py-2 font-semibold text-slate-600 sortable"
                 data-sort="tags"
@@ -214,17 +197,6 @@
                 <option value="published">Published</option>
               </select>
             </div>
-
-            <div>
-              <label for="post-platforms" class="block text-sm font-medium text-slate-700 mb-1">Платформы</label>
-              <select
-                id="post-platforms"
-                multiple
-                class="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="telegram">Telegram</option>
-              </select>
-            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-4">
@@ -264,25 +236,6 @@
               rows="10"
               class="w-full border border-slate-300 rounded-md px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
             ></textarea>
-          </div>
-
-          <!-- Секция публикации -->
-          <div id="publish-section" class="border-t border-slate-200 pt-4 mt-4" style="display: none;">
-            <h3 class="text-lg font-semibold mb-3">📤 Публикация</h3>
-            <div class="space-y-2 mb-3">
-              <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" id="publish-telegram" class="rounded border-slate-300" />
-                <span>Telegram</span>
-              </label>
-            </div>
-            <button
-              type="button"
-              class="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-md shadow-sm"
-              onclick="publishPost()"
-            >
-              Опубликовать выбранные
-            </button>
-            <div id="publish-status" class="mt-2 px-3 py-2 rounded-md text-sm hidden"></div>
           </div>
         </div>
 
@@ -387,17 +340,16 @@
           '<div class="text-xs text-slate-500">' + escapeHtml(post.slug) + '</div>' +
           '</td>' +
           '<td class="px-3 py-3">' +
-          '<span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ' + getStatusBadgeClass(post.status) + '">' + 
+          '<span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ' + getStatusBadgeClass(post.status) + '">' +
           escapeHtml(post.status) + '</span>' +
           '</td>' +
-          '<td class="px-3 py-3 text-slate-700 text-sm">' + (post.platforms ? post.platforms.join(', ') : '-') + '</td>' +
           '<td class="px-3 py-3 text-slate-700 text-sm">' + (post.tags && post.tags.length > 0 ? escapeHtml(post.tags.join(', ')) : '-') + '</td>' +
           '<td class="px-3 py-3 text-slate-500 text-sm">' + (post.deadline ? formatDate(post.deadline) : '-') + '</td>' +
           '<td class="px-3 py-3">' +
           '<div class="flex gap-2">' +
           '<button class="w-7 h-7 inline-flex items-center justify-center rounded bg-sky-100 text-slate-700 text-xs hover:bg-sky-200" title="Редактировать" onclick="openPostModal(\'' + post.id + '\')">✏️</button>' +
           '<button class="w-7 h-7 inline-flex items-center justify-center rounded bg-rose-100 text-slate-700 text-xs hover:bg-rose-200" title="Удалить" onclick="confirmDelete(\'' + post.id + '\')">🗑</button>' +
-          (post.status !== 'published' ? '<button class="w-7 h-7 inline-flex items-center justify-center rounded bg-emerald-100 text-slate-700 text-xs hover:bg-emerald-200" title="Опубликовать" onclick="openPublishModal(\'' + post.id + '\')">📨</button>' : '') +
+          (post.status !== 'published' ? '<button class="w-7 h-7 inline-flex items-center justify-center rounded bg-emerald-100 text-slate-700 text-xs hover:bg-emerald-200" title="Опубликовать" onclick="publishPostFromTable(\'' + post.id + '\')">📨</button>' : '') +
           '</div>' +
           '</td>' +
           '</tr>';
@@ -411,8 +363,6 @@
         case 'status':
           var statusOrder = { 'idea': 0, 'draft': 1, 'ready': 2, 'scheduled': 3, 'published': 4 };
           return statusOrder[post.status] || 999;
-        case 'platforms':
-          return post.platforms ? post.platforms.join(', ') : '';
         case 'tags':
           return post.tags ? post.tags.join(', ') : '';
         case 'deadline':
@@ -469,30 +419,11 @@
           document.getElementById('post-title').value = post.title;
           document.getElementById('post-slug').value = post.slug;
           document.getElementById('post-status').value = post.status;
-          
-          // Устанавливаем платформы
-          var platformsSelect = document.getElementById('post-platforms');
-          Array.from(platformsSelect.options).forEach(function(opt) {
-            opt.selected = post.platforms && post.platforms.includes(opt.value);
-          });
-          
           document.getElementById('post-deadline').value = post.deadline ? new Date(post.deadline).toISOString().slice(0, 16) : '';
           document.getElementById('post-scheduled').value = post.scheduled_at ? new Date(post.scheduled_at).toISOString().slice(0, 16) : '';
           document.getElementById('post-tags').value = post.tags ? post.tags.join(', ') : '';
           document.getElementById('post-content').value = post.content || '';
           document.getElementById('modal-title').textContent = 'Редактировать пост';
-
-          // Показываем секцию публикации только для неопубликованных постов
-          var publishSection = document.getElementById('publish-section');
-          if (post.status !== 'published' && post.external && !post.external.telegram_url) {
-            publishSection.style.display = 'block';
-            if (post.platforms) {
-              document.getElementById('publish-telegram').checked = post.platforms.includes('telegram');
-            }
-          } else {
-            publishSection.style.display = 'none';
-          }
-
           document.getElementById('post-modal').classList.add('active');
         })
         .catch(function(err) {
@@ -504,7 +435,6 @@
       document.getElementById('post-form').reset();
       document.getElementById('post-id').value = '';
       document.getElementById('modal-title').textContent = 'Новый пост';
-      document.getElementById('publish-section').style.display = 'none';
       document.getElementById('post-modal').classList.add('active');
     }
 
@@ -522,18 +452,10 @@
       var tagsStr = document.getElementById('post-tags').value;
       var tags = tagsStr ? tagsStr.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t; }) : [];
 
-      // Получаем выбранные платформы
-      var platforms = [];
-      var platformsSelect = document.getElementById('post-platforms');
-      Array.from(platformsSelect.options).forEach(function(opt) {
-        if (opt.selected) platforms.push(opt.value);
-      });
-
       var data = {
         title: document.getElementById('post-title').value,
         slug: document.getElementById('post-slug').value,
         status: document.getElementById('post-status').value,
-        platforms: platforms,
         deadline: document.getElementById('post-deadline').value || null,
         scheduled_at: document.getElementById('post-scheduled').value || null,
         tags: tags,
@@ -596,53 +518,15 @@
         });
     }
 
-    // Открытие модального окна публикации
-    function openPublishModal(id) {
-      fetch('/api/posts/' + id)
-        .then(function(r) { return r.json(); })
-        .then(function(post) {
-          document.getElementById('post-id').value = post.id;
-          document.getElementById('modal-title').textContent = 'Публикация поста';
-          
-          // Устанавливаем чекбоксы платформ
-          if (post.platforms) {
-            document.getElementById('publish-telegram').checked = post.platforms.includes('telegram');
-          }
-          
-          // Скрываем форму редактирования, показываем только публикацию
-          document.querySelectorAll('#post-form > div > div').forEach(function(div) {
-            div.style.display = 'none';
-          });
-          document.getElementById('publish-section').style.display = 'block';
-          document.getElementById('post-modal').classList.add('active');
-        })
-        .catch(function(err) {
-          showToast('Ошибка: ' + err.message, 'error');
-        });
-    }
-
-    // Публикация поста
-    function publishPost() {
-      var id = document.getElementById('post-id').value;
-      var platforms = [];
-
-      if (document.getElementById('publish-telegram').checked) {
-        platforms.push('telegram');
-      }
-
-      if (platforms.length === 0) {
-        showToast('Выберите хотя бы одну платформу для публикации', 'error');
+    // Публикация поста из таблицы (прямая публикация)
+    function publishPostFromTable(id) {
+      if (!confirm('Опубликовать пост в Telegram?')) {
         return;
       }
 
-      var statusDiv = document.getElementById('publish-status');
-      statusDiv.className = 'mt-2 px-3 py-2 rounded-md text-sm bg-emerald-100 text-emerald-700';
-      statusDiv.textContent = 'Публикация...';
-
       fetch('/api/posts/' + id + '/publish', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ platforms: platforms })
+        headers: {'Content-Type': 'application/json'}
       })
       .then(function(r) {
         if (!r.ok) {
@@ -650,21 +534,12 @@
         }
         return r.json();
       })
-      .then(function(result) {
-        statusDiv.className = 'mt-2 px-3 py-2 rounded-md text-sm bg-emerald-100 text-emerald-700';
-        statusDiv.textContent = '✅ Опубликовано в: ' + platforms.join(', ');
-
-        // Обновляем список постов
-        setTimeout(function() {
-          closePostModal();
-          htmx.trigger('#posts-list', 'load');
-          htmx.trigger('#stats', 'load');
-          showToast('Пост опубликован', 'success');
-        }, 1500);
+      .then(function() {
+        htmx.trigger('#posts-list', 'load');
+        htmx.trigger('#stats', 'load');
+        showToast('Пост опубликован', 'success');
       })
       .catch(function(err) {
-        statusDiv.className = 'mt-2 px-3 py-2 rounded-md text-sm bg-rose-100 text-rose-700';
-        statusDiv.textContent = '❌ Ошибка: ' + err.message;
         showToast('Ошибка публикации: ' + err.message, 'error');
       });
     }
@@ -697,29 +572,8 @@
 
     // Инициализация при загрузке страницы
     document.addEventListener('DOMContentLoaded', function() {
-      loadPlatforms();
       loadTags();
     });
-
-    // Загрузка платформ
-    function loadPlatforms() {
-      fetch('/api/platforms')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          var platformsSelect = document.getElementById('post-platforms');
-          // Очищаем и заполняем заново
-          platformsSelect.innerHTML = '';
-          data.platforms.forEach(function(platform) {
-            var option = document.createElement('option');
-            option.value = platform;
-            option.textContent = platform.charAt(0).toUpperCase() + platform.slice(1);
-            platformsSelect.appendChild(option);
-          });
-        })
-        .catch(function(err) {
-          console.error('Ошибка загрузки платформ:', err);
-        });
-    }
 
     // Загрузка тегов
     function loadTags() {

@@ -16,7 +16,10 @@ var statusCmd = &cobra.Command{
 	Long:  `Изменяет статус поста. Доступные статусы: idea, draft, ready, scheduled, published.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := core.PostID(args[0])
+		id, err := core.ParsePostID(args[0])
+		if err != nil {
+			return fmt.Errorf("неверный формат ID: %w", err)
+		}
 
 		if statusSet == "" {
 			return fmt.Errorf("укажите новый статус через флаг --set")
