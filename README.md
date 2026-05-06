@@ -302,6 +302,19 @@ defaults:
   status: draft
 ```
 
+### Переменные окружения
+
+Все поля конфигурации можно переопределить через переменные с префиксом `JTPOST_` (вложенные ключи разделяются `_`). Приоритет: env > yaml > defaults.
+
+| Переменная | Поле в YAML |
+|------------|-------------|
+| `JTPOST_POSTS_DIR` | `posts_dir` |
+| `JTPOST_TEMPLATES_DIR` | `templates_dir` |
+| `JTPOST_TELEGRAM_BOT_TOKEN` | `telegram.bot_token` |
+| `JTPOST_TELEGRAM_CHAT_ID` | `telegram.chat_id` |
+| `JTPOST_SQLITE_DSN` | `sqlite.dsn` |
+| `JTPOST_DEFAULTS_STATUS` | `defaults.status` |
+
 ### Использование SQLite
 
 Для работы с SQLite хранилищем:
