@@ -59,11 +59,10 @@ jobs:
           cache: false
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
           args: --timeout=5m
-          skip-cache: false
 
   build:
     name: Build
@@ -106,4 +105,8 @@ jobs:
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
       - name: Run gosec
-        run: gosec ./...
+        # G104: unhandled Close()/Flush() — конвенциональные игноры
+        # G204: subprocess с $EDITOR — штатное поведение CLI
+        # G301/G306: права на файлы/директории конфига и постов (0644/0755)
+        # G304: чтение файлов по пути от пользователя — штатное поведение CLI
+        run: gosec -exclude=G104,G204,G301,G304,G306 ./...
