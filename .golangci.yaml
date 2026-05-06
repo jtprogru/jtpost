@@ -332,6 +332,22 @@ linters:
       - path: internal/cli/new\.go
         linters:
           - noctx
+      # Logger по дизайну fmt-style без context.Context
+      - path: internal/adapters/httpapi/.*\.go
+        linters:
+          - contextcheck
+      # httptest.NewRequest в тестах middleware — допустимо
+      - path: internal/adapters/httpapi/middleware_test\.go
+        linters:
+          - noctx
+      # write() намеренно объявлен до публичных методов
+      - path: internal/logger/logger\.go
+        linters:
+          - funcorder
+      # пробелы в ключе " json " — намеренно для проверки TrimSpace
+      - path: internal/logger/logger_test\.go
+        linters:
+          - gocritic
       # inline error handling в config — ок
       - path: internal/adapters/config/config\.go
         linters:
