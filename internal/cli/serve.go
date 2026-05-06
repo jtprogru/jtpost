@@ -18,9 +18,10 @@ import (
 )
 
 var (
-	serveAddr   string = "0.0.0.0"
-	servePort   int    = 8080
-	serveVerbose bool  = false
+	serveAddr      string = "0.0.0.0"
+	servePort      int    = 8080
+	serveVerbose   bool   = false
+	serveLogFormat string = "text"
 )
 
 var serveCmd = &cobra.Command{
@@ -32,7 +33,8 @@ var serveCmd = &cobra.Command{
 		logCfg := logger.Config{
 			Output: os.Stdout,
 			Debug:  serveVerbose,
-			Prefix: "[HTTP]",
+			Prefix: "http",
+			Format: logger.ParseFormat(serveLogFormat),
 		}
 		log := logger.New(logCfg)
 
@@ -142,4 +144,5 @@ func init() {
 	serveCmd.Flags().StringVarP(&serveAddr, "addr", "a", "localhost", "адрес для прослушивания")
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8080, "порт для прослушивания")
 	serveCmd.Flags().BoolVarP(&serveVerbose, "verbose", "v", false, "включить подробное логирование (DEBUG режим)")
+	serveCmd.Flags().StringVar(&serveLogFormat, "log-format", "text", "формат логов: text (человекочитаемый) или json (структурированный)")
 }
