@@ -336,8 +336,8 @@ linters:
       - path: internal/adapters/httpapi/.*\.go
         linters:
           - contextcheck
-      # httptest.NewRequest в тестах middleware — допустимо
-      - path: internal/adapters/httpapi/middleware_test\.go
+      # httptest.NewRequest в тестах httpapi — допустимо
+      - path: internal/adapters/httpapi/.*_test\.go
         linters:
           - noctx
       # write() намеренно объявлен до публичных методов
