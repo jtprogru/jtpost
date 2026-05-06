@@ -60,6 +60,7 @@ func init() {
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(migrateIDsCmd)
+	rootCmd.AddCommand(doctorCmd)
 }
 
 func initConfig() {

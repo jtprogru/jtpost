@@ -90,48 +90,51 @@ func ValidateConfig(cfg Config) error {
 	return nil
 }
 
-// TestConnection проверяет соединение с Telegram API.
-func (p *Publisher) TestConnection() error {
+// BotInfo описывает учётную запись бота, возвращаемую методом getMe.
+type BotInfo struct {
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	Username  string `json:"username"`
+}
+
+// GetMe возвращает информацию о боте, проверяя валидность токена.
+func (p *Publisher) GetMe(ctx context.Context) (*BotInfo, error) {
 	apiURL := fmt.Sprintf("%s%s/getMe", p.baseURL, p.botToken)
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, apiURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return fmt.Errorf("ошибка создания запроса: %w", err)
+		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("ошибка подключения: %w", err)
+		return nil, fmt.Errorf("ошибка подключения: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("API вернул статус: %d", resp.StatusCode)
+		return nil, fmt.Errorf("API вернул статус: %d", resp.StatusCode)
 	}
 
 	var result struct {
-		OK   bool `json:"ok"`
-		Result struct {
-			ID        int    `json:"id"`
-			FirstName string `json:"first_name"`
-			Username  string `json:"username"`
-		} `json:"result"`
+		OK     bool    `json:"ok"`
+		Result BotInfo `json:"result"`
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		return err
+		return nil, err
 	}
 
 	if !result.OK {
-		return errors.New("бот не авторизован")
+		return nil, errors.New("бот не авторизован")
 	}
 
-	return nil
+	return &result.Result, nil
 }
 
 // sendMessage отправляет текстовое сообщение в канал.

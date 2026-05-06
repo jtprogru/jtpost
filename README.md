@@ -256,6 +256,7 @@ jtpost list --format json | jq '[.[].tags] | flatten | group_by(.) | map({tag: .
 | `jtpost stats` | Статистика по постам |
 | `jtpost next` | Показать следующий пост для публикации |
 | `jtpost serve` | Запустить HTTP API сервер |
+| `jtpost doctor` | Диагностика конфигурации и доступности зависимостей |
 | `jtpost --help` | Показать справку |
 
 ## Формат поста
