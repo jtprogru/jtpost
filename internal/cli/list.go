@@ -56,15 +56,17 @@ var listCmd = &cobra.Command{
 			return fmt.Errorf("ошибка получения списка постов: %w", err)
 		}
 
+		showID := !listNoID
+
 		// Выводим результат
 		switch listFormat {
 		case "table":
-			printTable(posts, listNoID)
+			printTable(posts, showID)
 		case "json":
 			// TODO: реализовать JSON вывод
 			fmt.Printf("JSON формат будет реализован позже\n")
 		default:
-			printTable(posts, listNoID)
+			printTable(posts, showID)
 		}
 
 		return nil

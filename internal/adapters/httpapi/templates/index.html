@@ -124,6 +124,7 @@
         <table class="w-full border-collapse text-sm">
           <thead class="bg-slate-100">
             <tr>
+              <th class="text-left px-3 py-2 font-semibold text-slate-600">ID</th>
               <th class="text-left px-3 py-2 font-semibold text-slate-600">Заголовок</th>
               <th
                 class="text-left px-3 py-2 font-semibold text-slate-600 sortable"
@@ -161,8 +162,28 @@
       
       <form id="post-form" class="px-6 py-4">
         <input type="hidden" id="post-id"/>
-        
+
         <div class="space-y-4">
+          <div id="post-id-row" class="hidden">
+            <label for="post-id-display" class="block text-sm font-medium text-slate-700 mb-1">ID</label>
+            <div class="flex gap-2">
+              <input
+                type="text"
+                id="post-id-display"
+                readonly
+                class="flex-1 border border-slate-300 rounded-md px-3 py-2 text-sm font-mono bg-slate-50 text-slate-600"
+              />
+              <button
+                type="button"
+                class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm px-3 py-2 rounded-md whitespace-nowrap"
+                onclick="copyToClipboard(document.getElementById('post-id-display').value, event)"
+                title="Скопировать ID"
+              >
+                📋 Копировать
+              </button>
+            </div>
+          </div>
+
           <div>
             <label for="post-title" class="block text-sm font-medium text-slate-700 mb-1">Заголовок</label>
             <input
@@ -334,7 +355,11 @@
       var html = '';
       for (var i = 0; i < posts.length; i++) {
         var post = posts[i];
+        var idShort = post.id ? String(post.id).slice(0, 8) : '';
         html += '<tr class="hover:bg-slate-50">' +
+          '<td class="px-3 py-3">' +
+          '<button type="button" class="font-mono text-xs text-slate-500 hover:text-blue-600 underline decoration-dotted" title="' + escapeHtml(post.id) + ' (клик — скопировать)" onclick="copyToClipboard(\'' + escapeHtml(post.id) + '\', event)">' + escapeHtml(idShort) + '</button>' +
+          '</td>' +
           '<td class="px-3 py-3">' +
           '<div class="font-medium text-slate-900">' + escapeHtml(post.title) + '</div>' +
           '<div class="text-xs text-slate-500">' + escapeHtml(post.slug) + '</div>' +
@@ -416,6 +441,8 @@
         .then(function(r) { return r.json(); })
         .then(function(post) {
           document.getElementById('post-id').value = post.id;
+          document.getElementById('post-id-display').value = post.id;
+          document.getElementById('post-id-row').classList.remove('hidden');
           document.getElementById('post-title').value = post.title;
           document.getElementById('post-slug').value = post.slug;
           document.getElementById('post-status').value = post.status;
@@ -434,15 +461,40 @@
     function openNewPostModal() {
       document.getElementById('post-form').reset();
       document.getElementById('post-id').value = '';
+      document.getElementById('post-id-display').value = '';
+      document.getElementById('post-id-row').classList.add('hidden');
       document.getElementById('modal-title').textContent = 'Новый пост';
       document.getElementById('post-modal').classList.add('active');
     }
 
     function closePostModal() {
       document.getElementById('post-modal').classList.remove('active');
-      var statusDiv = document.getElementById('publish-status');
-      statusDiv.className = 'publish-status mt-2 px-3 py-2 rounded-md text-sm hidden';
-      statusDiv.textContent = '';
+    }
+
+    // Копирование в буфер обмена с тостом и фоллбэком для http-окружения
+    function copyToClipboard(text, evt) {
+      if (evt) { evt.stopPropagation(); }
+      if (!text) { return; }
+      var done = function() { showToast('ID скопирован: ' + text.slice(0, 8) + '…', 'success'); };
+      var fail = function() { showToast('Не удалось скопировать ID', 'error'); };
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(fail);
+        return;
+      }
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        done();
+      } catch (e) {
+        fail();
+      }
     }
 
     // Сохранение поста
