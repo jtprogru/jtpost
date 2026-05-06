@@ -19,3 +19,6 @@ dist/
 .jtpost.yaml
 content/
 .jtpost.db
+
+# Локальные планы и заметки разработки
+plans/

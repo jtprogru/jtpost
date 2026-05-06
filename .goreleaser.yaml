@@ -1,5 +1,7 @@
 version: 2
 
+project_name: jtpost
+
 before:
   hooks:
     - go mod tidy
@@ -32,9 +34,28 @@ archives:
         formats: ["zip"]
     files:
       - README.md
+      - LICENSE*
+      - CHANGELOG.md
 
 checksum:
   name_template: "checksums.txt"
+
+# Подпись checksums.txt GPG-ключом.
+# Требует секретов GPG_PRIVATE_KEY и PASSPHRASE,
+# импортированных в gpg перед запуском goreleaser.
+signs:
+  - id: checksums
+    cmd: gpg
+    artifacts: checksum
+    args:
+      - "--batch"
+      - "--pinentry-mode=loopback"
+      - "--passphrase"
+      - "{{ .Env.PASSPHRASE }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
@@ -45,3 +66,33 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+
+# Публикация формулы Homebrew в jtprogru/homebrew-tap.
+# Требует HOMEBREW_TAP_GITHUB_TOKEN — PAT с contents:write на jtprogru/homebrew-tap.
+brews:
+  - name: jtpost
+    repository:
+      owner: jtprogru
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "brew: jtpost {{ .Tag }}"
+    homepage: "https://github.com/jtprogru/jtpost"
+    description: "CLI/web-сервис для управления публикациями в Telegram-канал."
+    license: "MIT"
+    skip_upload: auto
+    test: |
+      system "#{bin}/jtpost", "version"
+    install: |
+      bin.install "jtpost"
+
+release:
+  prerelease: auto
+  draft: false
