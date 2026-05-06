@@ -14,6 +14,7 @@
 - Руководство для участников (CONTRIBUTING.md)
 - Детальный ROADMAP проекта
 - GoReleaser: подпись `checksums.txt` GPG-ключом и автопубликация формулы в `jtprogru/homebrew-tap`
+- GoReleaser: multi-arch Docker-образы (linux/amd64, linux/arm64) публикуются в `ghcr.io/jtprogru/jtpost` через Buildx + QEMU
 - LICENSE (MIT)
 - План развития проекта в `plans/DEVELOPMENT_PLAN.md` (этапы CLI Hardening → Self-hosted → SaaS)
 - Web UI: колонка ID в таблице постов (короткий префикс UUID + копирование по клику)

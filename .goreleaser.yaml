@@ -40,6 +40,47 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# Multi-arch Docker-образы публикуются в GHCR.
+# Workflow логинится в ghcr.io через GITHUB_TOKEN, поэтому отдельный секрет не нужен.
+dockers:
+  - id: jtpost-amd64
+    image_templates:
+      - "ghcr.io/jtprogru/jtpost:{{ .Version }}-amd64"
+    use: buildx
+    dockerfile: Dockerfile.goreleaser
+    goos: linux
+    goarch: amd64
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+  - id: jtpost-arm64
+    image_templates:
+      - "ghcr.io/jtprogru/jtpost:{{ .Version }}-arm64"
+    use: buildx
+    dockerfile: Dockerfile.goreleaser
+    goos: linux
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+
+docker_manifests:
+  - name_template: "ghcr.io/jtprogru/jtpost:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/jtprogru/jtpost:{{ .Version }}-amd64"
+      - "ghcr.io/jtprogru/jtpost:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/jtprogru/jtpost:latest"
+    skip_push: auto
+    image_templates:
+      - "ghcr.io/jtprogru/jtpost:{{ .Version }}-amd64"
+      - "ghcr.io/jtprogru/jtpost:{{ .Version }}-arm64"
+
 # Подпись checksums.txt GPG-ключом.
 # Требует секретов GPG_PRIVATE_KEY и PASSPHRASE,
 # импортированных в gpg перед запуском goreleaser.

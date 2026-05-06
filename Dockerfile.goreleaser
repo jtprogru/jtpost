@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1
+# Используется goreleaser-ом: бинарник уже собран и копируется в образ.
+FROM gcr.io/distroless/static-debian12:nonroot
+
+ARG TARGETOS
+ARG TARGETARCH
+
+LABEL org.opencontainers.image.source="https://github.com/jtprogru/jtpost"
+LABEL org.opencontainers.image.description="CLI/web-сервис для управления публикациями в Telegram-канал."
+LABEL org.opencontainers.image.licenses="MIT"
+
+COPY jtpost /usr/local/bin/jtpost
+
+USER nonroot:nonroot
+WORKDIR /data
+
+ENTRYPOINT ["/usr/local/bin/jtpost"]
+CMD ["--help"]
