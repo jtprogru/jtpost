@@ -209,19 +209,21 @@
 
 ---
 
-### Этап 9: Git Repository хранилище 🔴
+### Этап 9: Git Repository хранилище 🟡
 
-**Статус:** 🔴 Запланировано
+**Статус:** 🟡 Частично реализовано
 **Приоритет:** Средний
-**Оценка:** 2-3 недели
 
-**Задачи:**
-- [ ] GitRepository адаптер (`internal/adapters/gitrepo`)
-- [ ] Авто-коммиты при изменении постов
-- [ ] Синхронизация с удалённым репо
-- [ ] Разрешение конфликтов слияния
-- [ ] История изменений постов
-- [ ] Откат к предыдущим версиям
+**Реализовано:**
+- ✅ GitRepository адаптер (`internal/adapters/gitrepo`) — decorator над fsrepo
+- ✅ Авто-коммиты при изменении постов (`auto_commit`)
+- ✅ Синхронизация с удалённым репо (`auto_push`)
+- ✅ Templated commit messages (`commit_template`)
+
+**Не реализовано (опционально, по запросу):**
+- 🔴 Разрешение конфликтов слияния (rebase/merge стратегии)
+- 🔴 История изменений постов через UI (`/ui/posts/{id}/history`)
+- 🔴 Откат к предыдущим версиям (revert)
 
 **Конфигурация:**
 ```yaml
@@ -237,43 +239,53 @@ storage:
 
 ---
 
-### Этап 10: PostgreSQL хранилище 🔴
+### Этап 10: PostgreSQL хранилище ✅
 
-**Статус:** 🔴 Запланировано
-**Приоритет:** Низкий
-**Оценка:** 1-2 недели
+**Статус:** 🟢 Завершено
+**Приоритет:** Средний
 
-**Задачи:**
-- [ ] PostgresRepository адаптер (`internal/adapters/postgres`)
-- [ ] Миграции схемы БД
-- [ ] Connection pooling
-- [ ] Поддержка транзакций
-- [ ] Команда `jtpost migrate --to postgres`
+**Реализовано:**
+- ✅ PostgresRepository адаптер (`internal/adapters/postgres`) с pgx/v5 + pgxpool
+- ✅ Миграции схемы через goose v3 + embed.FS, авто-применение при Open
+- ✅ Connection pooling (MaxOpenConns/MaxIdleConns/ConnMaxLifetime)
+- ✅ Поддержка транзакций (sqlc-generated queries + явные tx)
+- ✅ Integration-тесты через testcontainers-go (`//go:build integration`)
+- ✅ Storage Bundle (Posts/Users/Tokens/Sessions/OAuthAccounts/Outbox/AuditLog)
+- ✅ Audit log (миграция 0006_audit_log.sql)
+- ✅ Outbox с stuck-recovery sweep
 
 **Конфигурация:**
 ```yaml
 storage:
   type: "postgres"
-  dsn: "postgres://user:pass@host:5432/db?sslmode=disable"
-  max_open_conns: 10
-  max_idle_conns: 5
+  postgres:
+    dsn: "postgres://user:pass@host:5432/db?sslmode=disable"
+    max_open_conns: 10
+    max_idle_conns: 5
+    conn_max_lifetime: 30m
 ```
 
 ---
 
-### Этап 11: Улучшение Web UI 🔴
+### Этап 11: Улучшение Web UI ✅
 
-**Статус:** 🔴 Запланировано
+**Статус:** 🟢 Завершено (2026-05-07)
 **Приоритет:** Средний
-**Оценка:** 1-2 недели
 
-**Задачи:**
-- [ ] Редактор Markdown с предпросмотром
-- [ ] Drag-and-drop загрузка изображений
-- [ ] Календарь публикаций
-- [ ] Тёмная тема
-- [ ] PWA (Progressive Web App)
-- [ ] WebSocket для real-time обновлений
+**Реализовано (Web UI v2 на htmx + templ, mounted под `/ui/`):**
+- ✅ B.4a foundation — layout (nav + dark/light theme через CSS-vars + localStorage), dashboard (posts list + htmx partial swap)
+- ✅ B.4b auth — `/ui/login`, `/ui/logout`, audit-aware
+- ✅ B.4c post edit — Markdown live-preview (yuin/goldmark, GFM, без unsafe-HTML — XSS-protection)
+- ✅ B.4d plan — `/ui/plan?days=N` группа по датам
+- ✅ B.4e/f CRUD — `/ui/posts/new`, delete с confirm, owner-only `/ui/audit` с filter
+- ✅ B.4g calendar — month grid `/ui/calendar?month=YYYY-MM`, Mon-first, scheduled/deadline/published цветовая маркировка, prev/next/today
+- ✅ B.4h drag-drop image upload — `POST /ui/upload` (MIME-sniff allowlist, traversal-safe serve), drop-zone в editor
+- ✅ B.4i SSE real-time — `core.EventBus`/MemoryBus, `GET /ui/events` (heartbeat 25s), dashboard auto-reload
+- ✅ B.4j Worker→EventBus — `post.published`/`post.failed` events
+- ✅ B.4k PWA — manifest + service worker (cache-first static, network-first UI, scope=/ui/)
+
+**Defer (отдельные cuts, по запросу):**
+- 🔴 Cross-process bus transport (Redis/NATS) — для worker-as-separate-process real-time
 
 ---
 
