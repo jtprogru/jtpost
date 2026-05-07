@@ -11,17 +11,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jtprogru/jtpost/internal/adapters/apiclient"
 	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
 
 var (
-	newTags   []string
-	newSlug   string
-	newEditor string
-	newTenant string
-	newAuthor string
+	newTags    []string
+	newSlug    string
+	newEditor  string
+	newTenant  string
+	newAuthor  string
+	newContent string
 )
 
 var newCmd = &cobra.Command{
@@ -31,6 +33,17 @@ var newCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		title := args[0]
+
+		// F5d2: --remote mode.
+		didRun, err := runRemote(cmd, func(ctx context.Context, cli *apiclient.ClientWithResponses) error {
+			if newEditor != "" {
+				fmt.Fprintln(os.Stderr, "⚠️  --editor ignored in --remote mode")
+			}
+			return runNewRemote(ctx, cli, title, newSlug, newContent, newTags, os.Stdin, cmd.OutOrStdout())
+		})
+		if err != nil || didRun {
+			return err
+		}
 
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
@@ -103,6 +116,7 @@ func init() {
 	newCmd.Flags().StringVarP(&newEditor, "editor", "e", "", "редактор для открытия файла (по умолчанию $VISUAL или $EDITOR)")
 	newCmd.Flags().StringVar(&newTenant, "tenant", "", "tenant UUID (по умолчанию из конфига)")
 	newCmd.Flags().StringVar(&newAuthor, "author", "", "author UUID (по умолчанию из конфига)")
+	newCmd.Flags().StringVar(&newContent, "content", "", "источник контента: '-' для stdin или путь к файлу (только для --remote)")
 }
 
 // tenantShortHex возвращает первые 8 hex-символов TenantID без дефисов.

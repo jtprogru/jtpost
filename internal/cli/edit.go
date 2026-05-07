@@ -1,17 +1,25 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/jtprogru/jtpost/internal/adapters/apiclient"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
 
-var editEditor string
+var (
+	editEditor  string
+	editTitle   string
+	editContent string
+	editTags    []string
+	editStatus  string
+)
 
 var editCmd = &cobra.Command{
 	Use:   "edit <id>",
@@ -19,6 +27,18 @@ var editCmd = &cobra.Command{
 	Long:  `Открывает файл поста в редакторе для редактирования.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// F5d2: --remote mode.
+		hasTags := cmd.Flags().Changed("tag")
+		didRun, err := runRemote(cmd, func(ctx context.Context, cli *apiclient.ClientWithResponses) error {
+			if editEditor != "" {
+				fmt.Fprintln(os.Stderr, "⚠️  --editor ignored in --remote mode")
+			}
+			return runEditRemote(ctx, cli, args[0], editTitle, editContent, editStatus, editTags, hasTags, os.Stdin, cmd.OutOrStdout())
+		})
+		if err != nil || didRun {
+			return err
+		}
+
 		id, err := core.ParsePostID(args[0])
 		if err != nil {
 			return fmt.Errorf("неверный формат ID: %w", err)
@@ -86,6 +106,10 @@ var editCmd = &cobra.Command{
 
 func init() {
 	editCmd.Flags().StringVarP(&editEditor, "editor", "e", "", "редактор для открытия файла")
+	editCmd.Flags().StringVar(&editTitle, "title", "", "новый заголовок (только для --remote)")
+	editCmd.Flags().StringVar(&editContent, "content", "", "источник контента: '-' для stdin или путь к файлу (только для --remote)")
+	editCmd.Flags().StringSliceVar(&editTags, "tag", nil, "новый набор тегов (replace; только для --remote)")
+	editCmd.Flags().StringVar(&editStatus, "status", "", "новый статус: draft|ready|scheduled|published (только для --remote)")
 }
 
 func findPostFile(postsDir string, id core.PostID) (string, error) {

@@ -7,6 +7,18 @@
 
 ## [Неопубликовано]
 
+### F5d2: `--remote` для `new` и `edit` с передачей контента (extension of B.3)
+
+**Добавлено:**
+- **`jtpost new <title> --remote URL --auth TOKEN [--slug S] [--tag T...] [--content -|<file>]`** через `cli.CreatePostWithResponse`. Контент читается из stdin (`--content -`), файла (`--content path`) или пустой; flag `--editor` игнорируется в remote-mode (warning to stderr).
+- **`jtpost edit <uuid> --remote ... [--title T] [--content -|<file>] [--tag T...] [--status S]`** через `cli.UpdatePostWithResponse`. Partial update — передаются только указанные поля. `--status` принимает `draft|ready|scheduled|published`. Без полей → error "no fields to update". Tags через `cmd.Flags().Changed("tag")` (различает unset vs пустой slice — replace).
+- **`readContentSource(path, stdin)`** helper в `new_remote.go` — переиспользуется edit_remote.
+
+**Тесты:**
+- `new_remote_test.go`: success (POST с body+content+tags) / 400 / 401 / no-title.
+- `edit_remote_test.go`: success (partial PATCH без content) / no-fields / bad-uuid / 404 / tags-replace.
+- `TestReadContentSource_*` для stdin и empty path.
+
 ### F5d: `--remote` для write CLI команд `delete`, `publish` (extension of B.3)
 
 **Добавлено:**
