@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/jtprogru/jtpost/internal/adapters/apiclient"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
@@ -15,6 +17,14 @@ var deleteCmd = &cobra.Command{
 	Long:  `Удаляет пост по его идентификатору. Без флага --force запрашивает подтверждение.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// F5d: --remote mode.
+		didRun, err := runRemote(cmd, func(ctx context.Context, cli *apiclient.ClientWithResponses) error {
+			return runDeleteRemote(ctx, cli, args[0], cmd.OutOrStdout())
+		})
+		if err != nil || didRun {
+			return err
+		}
+
 		id, err := core.ParsePostID(args[0])
 		if err != nil {
 			return fmt.Errorf("неверный формат ID: %w", err)

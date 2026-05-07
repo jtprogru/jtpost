@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jtprogru/jtpost/internal/adapters/apiclient"
 	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/telegram"
 	"github.com/jtprogru/jtpost/internal/adapters/telegramconv"
@@ -21,6 +22,14 @@ var publishCmd = &cobra.Command{
 	Long:  `Публикует пост в Telegram.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// F5d: --remote mode.
+		didRun, err := runRemote(cmd, func(ctx context.Context, cli *apiclient.ClientWithResponses) error {
+			return runPublishRemote(ctx, cli, args[0], cmd.OutOrStdout())
+		})
+		if err != nil || didRun {
+			return err
+		}
+
 		id, err := core.ParsePostID(args[0])
 		if err != nil {
 			return fmt.Errorf("неверный формат ID: %w", err)

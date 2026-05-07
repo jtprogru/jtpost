@@ -7,6 +7,19 @@
 
 ## [Неопубликовано]
 
+### F5d: `--remote` для write CLI команд `delete`, `publish` (extension of B.3)
+
+**Добавлено:**
+- **`jtpost delete <uuid> --remote URL --auth TOKEN`** через `cli.DeletePostWithResponse(ctx, id)`. Маппинг 204/200→success, 401→unauthorized, 403→forbidden, 404→post not found.
+- **`jtpost publish <uuid> --remote URL --auth TOKEN`** через `cli.PublishPostWithResponse(ctx, id)`. Маппинг 200→success (выводит slug+title), 400→publish rejected, 409→conflict (already published), 401/403/404 как у delete.
+- Оба используют существующий `runRemote(cmd, fn)` helper из F5c — без изменений в shared layer.
+
+**Тесты:**
+- `delete_remote_test.go`, `publish_remote_test.go` — httptest mock-server: success / 401 / 404 / conflict / bad-UUID.
+
+**Out of scope (отложено в F5d2):**
+- `new --remote`, `edit --remote` — требуют редизайна editor-flow для передачи контента (--content/stdin/file).
+
 ### F5c: `--remote` для read-only CLI команд (extension of B.3)
 
 **Добавлено:**
