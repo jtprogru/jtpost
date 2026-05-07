@@ -382,6 +382,28 @@ h1, h2, h3 { color: var(--fg); }
     .post-edit__split { grid-template-columns: 1fr; }
 }
 
+.post-edit__editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.4rem;
+}
+.post-edit__upload-hint {
+    color: var(--fg-muted);
+    font-size: 0.8rem;
+}
+.btn--ghost {
+    background: var(--bg-alt);
+    color: var(--fg);
+    border: 1px solid var(--border);
+}
+.btn--ghost:hover { background: var(--bg); }
+textarea.drop-active {
+    outline: 2px dashed var(--accent);
+    outline-offset: -4px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
 .post-edit__delete-form {
     margin-top: 2rem;
     padding-top: 1rem;

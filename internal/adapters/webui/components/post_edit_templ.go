@@ -230,14 +230,14 @@ func PostEdit(p PostEditProps) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\"></label><div class=\"post-edit__split\"><label class=\"post-edit__editor\">Content (Markdown) <textarea name=\"content\" rows=\"22\" hx-post=\"/ui/preview\" hx-trigger=\"input changed delay:400ms\" hx-target=\"#md-preview\" hx-swap=\"innerHTML\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\"></label><div class=\"post-edit__split\"><label class=\"post-edit__editor\">Content (Markdown)<div class=\"post-edit__editor-actions\"><button type=\"button\" class=\"btn btn--ghost\" onclick=\"document.getElementById('md-image-input').click()\">📎 Upload image</button> <span class=\"post-edit__upload-hint\">или перетащи файл в редактор</span> <input type=\"file\" id=\"md-image-input\" accept=\"image/*\" style=\"display:none\" onchange=\"jtpostUploadFiles(this.files)\"></div><textarea id=\"md-textarea\" name=\"content\" rows=\"22\" ondragover=\"event.preventDefault(); this.classList.add('drop-active')\" ondragleave=\"this.classList.remove('drop-active')\" ondrop=\"event.preventDefault(); this.classList.remove('drop-active'); jtpostUploadFiles(event.dataTransfer.files)\" hx-post=\"/ui/preview\" hx-trigger=\"input changed delay:400ms\" hx-target=\"#md-preview\" hx-swap=\"innerHTML\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(p.Post.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 69, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 80, Col: 23}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -258,7 +258,7 @@ func PostEdit(p PostEditProps) templ.Component {
 			var templ_7745c5c3_Var15 templ.SafeURL
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/ui/posts/" + p.Post.ID.String() + "/delete"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 85, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 96, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {

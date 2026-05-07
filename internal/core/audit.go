@@ -22,6 +22,7 @@ const (
 	AuditPostUpdated      AuditAction = "post.updated"
 	AuditPostDeleted      AuditAction = "post.deleted"
 	AuditPostPublished    AuditAction = "post.published"
+	AuditImageUploaded    AuditAction = "image.uploaded"
 )
 
 // AuditOutcome — итог события (success | failure).

@@ -50,7 +50,7 @@ func Layout(p LayoutProps) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " — jtpost</title><link rel=\"stylesheet\" href=\"/ui/static/app.css\"><script src=\"/ui/static/htmx.min.js\" defer></script><script>\n\t\t\t\t(function() {\n\t\t\t\t\tconst saved = localStorage.getItem('jtpost-theme');\n\t\t\t\t\tif (saved) document.documentElement.setAttribute('data-theme', saved);\n\t\t\t\t})();\n\t\t\t</script></head><body>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " — jtpost</title><link rel=\"stylesheet\" href=\"/ui/static/app.css\"><script src=\"/ui/static/htmx.min.js\" defer></script><script src=\"/ui/static/upload.js\" defer></script><script>\n\t\t\t\t(function() {\n\t\t\t\t\tconst saved = localStorage.getItem('jtpost-theme');\n\t\t\t\t\tif (saved) document.documentElement.setAttribute('data-theme', saved);\n\t\t\t\t})();\n\t\t\t</script></head><body>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -195,7 +195,7 @@ func nav(p LayoutProps) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(p.UserEmail)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/layout.templ`, Line: 47, Col: 18}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/layout.templ`, Line: 48, Col: 18}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {

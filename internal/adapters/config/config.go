@@ -133,6 +133,14 @@ type ServerConfig struct {
 	CookieSecure bool            `yaml:"cookie_secure" mapstructure:"cookie_secure"`
 	CookieDomain string          `yaml:"cookie_domain,omitempty" mapstructure:"cookie_domain"`
 	RateLimit    RateLimitConfig `yaml:"rate_limit,omitempty" mapstructure:"rate_limit"`
+	Upload       UploadConfig    `yaml:"upload,omitempty" mapstructure:"upload"`
+}
+
+// UploadConfig — настройки загрузки картинок через Web UI.
+type UploadConfig struct {
+	Dir          string   `yaml:"dir,omitempty" mapstructure:"dir"`                       // путь к каталогу uploads
+	MaxSizeBytes int64    `yaml:"max_size_bytes,omitempty" mapstructure:"max_size_bytes"` // 0 = unlimited
+	AllowedMIME  []string `yaml:"allowed_mime,omitempty" mapstructure:"allowed_mime"`
 }
 
 // RateLimitConfig — настройки HTTP rate-limiting middleware.
@@ -189,6 +197,11 @@ func NewDefaultConfig() *Config {
 				Enabled:           false,
 				RequestsPerMinute: 60,
 				Burst:             10,
+			},
+			Upload: UploadConfig{
+				Dir:          "data/uploads",
+				MaxSizeBytes: 10 * 1024 * 1024,
+				AllowedMIME:  []string{"image/jpeg", "image/png", "image/webp", "image/gif"},
 			},
 		},
 		Defaults: DefaultConfig{
@@ -291,6 +304,9 @@ func loadFromFile(path string) (*Config, error) {
 	v.SetDefault("server.rate_limit.requests_per_minute", def.Server.RateLimit.RequestsPerMinute)
 	v.SetDefault("server.rate_limit.burst", def.Server.RateLimit.Burst)
 	v.SetDefault("server.rate_limit.trust_proxy_header", def.Server.RateLimit.TrustProxyHeader)
+	v.SetDefault("server.upload.dir", def.Server.Upload.Dir)
+	v.SetDefault("server.upload.max_size_bytes", def.Server.Upload.MaxSizeBytes)
+	v.SetDefault("server.upload.allowed_mime", def.Server.Upload.AllowedMIME)
 
 	// Явный bind для вложенных env-переменных — AutomaticEnv не обходит
 	// неизвестные ключи без хинта.
