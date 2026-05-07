@@ -203,6 +203,101 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /outbox:
+    get:
+      summary: List outbox entries
+      operationId: listOutbox
+      tags: [outbox]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, in_flight, done, failed]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: Outbox entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/OutboxFullEntry'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Outbox not configured
+          content:
+            text/plain:
+              schema: {type: string}
+
+  /outbox/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      summary: Get outbox entry
+      operationId: getOutbox
+      tags: [outbox]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Outbox entry
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OutboxFullEntry'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Outbox not configured
+          content:
+            text/plain:
+              schema: {type: string}
+
+  /outbox/{id}/retry:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      summary: Force retry outbox entry
+      description: Сбрасывает entry в pending, attempts=0, next_attempt_at=now.
+      operationId: retryOutbox
+      tags: [outbox]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '202':
+          description: Retry scheduled
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OutboxFullEntry'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Entry already done
+          content:
+            text/plain:
+              schema: {type: string}
+
   /posts/{id}/queue:
     parameters:
       - $ref: '#/components/parameters/PostIdParam'
@@ -592,6 +687,22 @@ components:
         next_attempt_at:
           type: string
           format: date-time
+
+    OutboxFullEntry:
+      type: object
+      required: [id, post_id, tenant_id, kind, status, attempts, max_attempts, next_attempt_at, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        post_id: {type: string, format: uuid}
+        tenant_id: {type: string, format: uuid}
+        kind: {type: string}
+        status: {type: string, enum: [pending, in_flight, done, failed]}
+        attempts: {type: integer}
+        max_attempts: {type: integer}
+        next_attempt_at: {type: string, format: date-time}
+        last_error: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
 
     Post:
       type: object

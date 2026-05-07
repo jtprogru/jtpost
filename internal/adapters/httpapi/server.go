@@ -99,6 +99,8 @@ func (s *Server) registerRoutes() {
 	s.bothPrefixes("/api/stats", s.apply(s.handleStats))
 	s.bothPrefixes("/api/plan", s.apply(s.handlePlan))
 	s.bothPrefixes("/api/tags", s.apply(s.handleTags))
+	s.bothPrefixes("/api/outbox", s.apply(s.handleOutbox))
+	s.bothPrefixes("/api/outbox/", s.apply(s.handleOutboxByID))
 	if s.authSvc != nil && s.cfg != nil {
 		s.bothPrefixesFunc("/api/auth/login", LoginHandler(s.authSvc, s.cfg))
 		s.bothPrefixesFunc("/api/auth/logout", LogoutHandler(s.authSvc, s.cfg))

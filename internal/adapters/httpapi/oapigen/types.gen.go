@@ -63,6 +63,30 @@ func (e OutboxEntryStatus) Valid() bool {
 	}
 }
 
+// Defines values for OutboxFullEntryStatus.
+const (
+	OutboxFullEntryStatusDone     OutboxFullEntryStatus = "done"
+	OutboxFullEntryStatusFailed   OutboxFullEntryStatus = "failed"
+	OutboxFullEntryStatusInFlight OutboxFullEntryStatus = "in_flight"
+	OutboxFullEntryStatusPending  OutboxFullEntryStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the OutboxFullEntryStatus enum.
+func (e OutboxFullEntryStatus) Valid() bool {
+	switch e {
+	case OutboxFullEntryStatusDone:
+		return true
+	case OutboxFullEntryStatusFailed:
+		return true
+	case OutboxFullEntryStatusInFlight:
+		return true
+	case OutboxFullEntryStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlanItemDateType.
 const (
 	PlanItemDateTypeDeadline PlanItemDateType = "deadline"
@@ -201,6 +225,30 @@ func (e OAuthProviderParam) Valid() bool {
 	}
 }
 
+// Defines values for ListOutboxParamsStatus.
+const (
+	ListOutboxParamsStatusDone     ListOutboxParamsStatus = "done"
+	ListOutboxParamsStatusFailed   ListOutboxParamsStatus = "failed"
+	ListOutboxParamsStatusInFlight ListOutboxParamsStatus = "in_flight"
+	ListOutboxParamsStatusPending  ListOutboxParamsStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ListOutboxParamsStatus enum.
+func (e ListOutboxParamsStatus) Valid() bool {
+	switch e {
+	case ListOutboxParamsStatusDone:
+		return true
+	case ListOutboxParamsStatusFailed:
+		return true
+	case ListOutboxParamsStatusInFlight:
+		return true
+	case ListOutboxParamsStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListPostsParamsSortBy.
 const (
 	CreatedAt   ListPostsParamsSortBy = "created_at"
@@ -323,6 +371,24 @@ type OutboxEntry struct {
 
 // OutboxEntryStatus defines model for OutboxEntry.Status.
 type OutboxEntryStatus string
+
+// OutboxFullEntry defines model for OutboxFullEntry.
+type OutboxFullEntry struct {
+	Attempts      int                   `json:"attempts"`
+	CreatedAt     time.Time             `json:"created_at"`
+	Id            openapi_types.UUID    `json:"id"`
+	Kind          string                `json:"kind"`
+	LastError     *string               `json:"last_error,omitempty"`
+	MaxAttempts   int                   `json:"max_attempts"`
+	NextAttemptAt time.Time             `json:"next_attempt_at"`
+	PostId        openapi_types.UUID    `json:"post_id"`
+	Status        OutboxFullEntryStatus `json:"status"`
+	TenantId      openapi_types.UUID    `json:"tenant_id"`
+	UpdatedAt     time.Time             `json:"updated_at"`
+}
+
+// OutboxFullEntryStatus defines model for OutboxFullEntry.Status.
+type OutboxFullEntryStatus string
 
 // PlanItem defines model for PlanItem.
 type PlanItem struct {
@@ -466,6 +532,15 @@ type OauthCallbackParams struct {
 	Code  string `form:"code" json:"code"`
 	State string `form:"state" json:"state"`
 }
+
+// ListOutboxParams defines parameters for ListOutbox.
+type ListOutboxParams struct {
+	Status *ListOutboxParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Limit  *int                    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListOutboxParamsStatus defines parameters for ListOutbox.
+type ListOutboxParamsStatus string
 
 // GetPlanParams defines parameters for GetPlan.
 type GetPlanParams struct {

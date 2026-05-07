@@ -72,6 +72,30 @@ func (e OutboxEntryStatus) Valid() bool {
 	}
 }
 
+// Defines values for OutboxFullEntryStatus.
+const (
+	OutboxFullEntryStatusDone     OutboxFullEntryStatus = "done"
+	OutboxFullEntryStatusFailed   OutboxFullEntryStatus = "failed"
+	OutboxFullEntryStatusInFlight OutboxFullEntryStatus = "in_flight"
+	OutboxFullEntryStatusPending  OutboxFullEntryStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the OutboxFullEntryStatus enum.
+func (e OutboxFullEntryStatus) Valid() bool {
+	switch e {
+	case OutboxFullEntryStatusDone:
+		return true
+	case OutboxFullEntryStatusFailed:
+		return true
+	case OutboxFullEntryStatusInFlight:
+		return true
+	case OutboxFullEntryStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlanItemDateType.
 const (
 	PlanItemDateTypeDeadline PlanItemDateType = "deadline"
@@ -210,6 +234,30 @@ func (e OAuthProviderParam) Valid() bool {
 	}
 }
 
+// Defines values for ListOutboxParamsStatus.
+const (
+	ListOutboxParamsStatusDone     ListOutboxParamsStatus = "done"
+	ListOutboxParamsStatusFailed   ListOutboxParamsStatus = "failed"
+	ListOutboxParamsStatusInFlight ListOutboxParamsStatus = "in_flight"
+	ListOutboxParamsStatusPending  ListOutboxParamsStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ListOutboxParamsStatus enum.
+func (e ListOutboxParamsStatus) Valid() bool {
+	switch e {
+	case ListOutboxParamsStatusDone:
+		return true
+	case ListOutboxParamsStatusFailed:
+		return true
+	case ListOutboxParamsStatusInFlight:
+		return true
+	case ListOutboxParamsStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListPostsParamsSortBy.
 const (
 	CreatedAt   ListPostsParamsSortBy = "created_at"
@@ -332,6 +380,24 @@ type OutboxEntry struct {
 
 // OutboxEntryStatus defines model for OutboxEntry.Status.
 type OutboxEntryStatus string
+
+// OutboxFullEntry defines model for OutboxFullEntry.
+type OutboxFullEntry struct {
+	Attempts      int                   `json:"attempts"`
+	CreatedAt     time.Time             `json:"created_at"`
+	Id            openapi_types.UUID    `json:"id"`
+	Kind          string                `json:"kind"`
+	LastError     *string               `json:"last_error,omitempty"`
+	MaxAttempts   int                   `json:"max_attempts"`
+	NextAttemptAt time.Time             `json:"next_attempt_at"`
+	PostId        openapi_types.UUID    `json:"post_id"`
+	Status        OutboxFullEntryStatus `json:"status"`
+	TenantId      openapi_types.UUID    `json:"tenant_id"`
+	UpdatedAt     time.Time             `json:"updated_at"`
+}
+
+// OutboxFullEntryStatus defines model for OutboxFullEntry.Status.
+type OutboxFullEntryStatus string
 
 // PlanItem defines model for PlanItem.
 type PlanItem struct {
@@ -476,6 +542,15 @@ type OauthCallbackParams struct {
 	State string `form:"state" json:"state"`
 }
 
+// ListOutboxParams defines parameters for ListOutbox.
+type ListOutboxParams struct {
+	Status *ListOutboxParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Limit  *int                    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListOutboxParamsStatus defines parameters for ListOutbox.
+type ListOutboxParamsStatus string
+
 // GetPlanParams defines parameters for GetPlan.
 type GetPlanParams struct {
 	Days *int `form:"days,omitempty" json:"days,omitempty"`
@@ -603,6 +678,15 @@ type ClientInterface interface {
 	// GetNextPost request
 	GetNextPost(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListOutbox request
+	ListOutbox(ctx context.Context, params *ListOutboxParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOutbox request
+	GetOutbox(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RetryOutbox request
+	RetryOutbox(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetPlan request
 	GetPlan(ctx context.Context, params *GetPlanParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -712,6 +796,42 @@ func (c *Client) OauthCallback(ctx context.Context, provider OAuthProviderParam,
 
 func (c *Client) GetNextPost(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetNextPostRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListOutbox(ctx context.Context, params *ListOutboxParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOutboxRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetOutbox(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOutboxRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RetryOutbox(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRetryOutboxRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -1079,6 +1199,140 @@ func NewGetNextPostRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListOutboxRequest generates requests for ListOutbox
+func NewListOutboxRequest(server string, params *ListOutboxParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/outbox")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOutboxRequest generates requests for GetOutbox
+func NewGetOutboxRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/outbox/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRetryOutboxRequest generates requests for RetryOutbox
+func NewRetryOutboxRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/outbox/%s/retry", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1606,6 +1860,15 @@ type ClientWithResponsesInterface interface {
 	// GetNextPostWithResponse request
 	GetNextPostWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetNextPostResponse, error)
 
+	// ListOutboxWithResponse request
+	ListOutboxWithResponse(ctx context.Context, params *ListOutboxParams, reqEditors ...RequestEditorFn) (*ListOutboxResponse, error)
+
+	// GetOutboxWithResponse request
+	GetOutboxWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOutboxResponse, error)
+
+	// RetryOutboxWithResponse request
+	RetryOutboxWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RetryOutboxResponse, error)
+
 	// GetPlanWithResponse request
 	GetPlanWithResponse(ctx context.Context, params *GetPlanParams, reqEditors ...RequestEditorFn) (*GetPlanResponse, error)
 
@@ -1821,6 +2084,101 @@ func (r GetNextPostResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetNextPostResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListOutboxResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]OutboxFullEntry
+	JSON401      *Unauthorized
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOutboxResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOutboxResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListOutboxResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetOutboxResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *OutboxFullEntry
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOutboxResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOutboxResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOutboxResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RetryOutboxResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *OutboxFullEntry
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r RetryOutboxResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RetryOutboxResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RetryOutboxResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2210,6 +2568,33 @@ func (c *ClientWithResponses) GetNextPostWithResponse(ctx context.Context, reqEd
 	return ParseGetNextPostResponse(rsp)
 }
 
+// ListOutboxWithResponse request returning *ListOutboxResponse
+func (c *ClientWithResponses) ListOutboxWithResponse(ctx context.Context, params *ListOutboxParams, reqEditors ...RequestEditorFn) (*ListOutboxResponse, error) {
+	rsp, err := c.ListOutbox(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOutboxResponse(rsp)
+}
+
+// GetOutboxWithResponse request returning *GetOutboxResponse
+func (c *ClientWithResponses) GetOutboxWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOutboxResponse, error) {
+	rsp, err := c.GetOutbox(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOutboxResponse(rsp)
+}
+
+// RetryOutboxWithResponse request returning *RetryOutboxResponse
+func (c *ClientWithResponses) RetryOutboxWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RetryOutboxResponse, error) {
+	rsp, err := c.RetryOutbox(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRetryOutboxResponse(rsp)
+}
+
 // GetPlanWithResponse request returning *GetPlanResponse
 func (c *ClientWithResponses) GetPlanWithResponse(ctx context.Context, params *GetPlanParams, reqEditors ...RequestEditorFn) (*GetPlanResponse, error) {
 	rsp, err := c.GetPlan(ctx, params, reqEditors...)
@@ -2491,6 +2876,119 @@ func ParseGetNextPostResponse(rsp *http.Response) (*GetNextPostResponse, error) 
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOutboxResponse parses an HTTP response from a ListOutboxWithResponse call
+func ParseListOutboxResponse(rsp *http.Response) (*ListOutboxResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOutboxResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []OutboxFullEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOutboxResponse parses an HTTP response from a GetOutboxWithResponse call
+func ParseGetOutboxResponse(rsp *http.Response) (*GetOutboxResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOutboxResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OutboxFullEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRetryOutboxResponse parses an HTTP response from a RetryOutboxWithResponse call
+func ParseRetryOutboxResponse(rsp *http.Response) (*RetryOutboxResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RetryOutboxResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest OutboxFullEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized

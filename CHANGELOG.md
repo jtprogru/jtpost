@@ -7,6 +7,19 @@
 
 ## [Неопубликовано]
 
+### B.5d: HTTP API endpoints для управления outbox
+
+**Добавлено:**
+- **`GET /api/outbox?status=&limit=`** — список outbox-записей с фильтрацией. Возвращает `OutboxFullEntry[]`.
+- **`GET /api/outbox/{id}`** — детали одной записи. 404 если нет.
+- **`POST /api/outbox/{id}/retry`** — принудительный retry: сбрасывает в `pending`, attempts=0, next_attempt_at=now. 409 для записей в `done` (нечего retry'ить).
+- **OpenAPI spec**: `listOutbox`/`getOutbox`/`retryOutbox` operations + `OutboxFullEntry` schema. Codegen обновлён.
+- Все endpoints доступны и под `/api/` и под `/api/v1/` (bothPrefixes pattern). 503 если outbox не сконфигурирован.
+
+**Тесты:**
+- 6 тестов (`outbox_handlers_test.go`): list+filter, get success, get 404, retry success (status reset), retry 409 для done, 503 для всех endpoints без outbox, v1 alias.
+- `task lint` 0 issues, `task test` GREEN.
+
 ### F-cleanup-lint: устранение всех lint-замечаний (44 → 0)
 
 **Исправлено реальной правкой кода (28):**

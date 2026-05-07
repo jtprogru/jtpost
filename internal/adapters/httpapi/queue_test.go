@@ -33,17 +33,57 @@ func (m *mockOutboxRepo) Enqueue(_ context.Context, e *core.OutboxEntry) error {
 func (m *mockOutboxRepo) ClaimNext(context.Context, time.Time) (*core.OutboxEntry, error) {
 	return nil, nil //nolint:nilnil // sentinel
 }
-func (m *mockOutboxRepo) MarkDone(context.Context, uuid.UUID, time.Time) error { return nil }
-func (m *mockOutboxRepo) MarkRetry(context.Context, uuid.UUID, int, time.Time, string, time.Time) error {
-	return nil
+func (m *mockOutboxRepo) MarkDone(_ context.Context, id uuid.UUID, now time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.entries {
+		if e.ID == id {
+			e.Status = core.OutboxStatusDone
+			e.UpdatedAt = now
+			return nil
+		}
+	}
+	return core.ErrNotFound
 }
-func (m *mockOutboxRepo) MarkFailed(context.Context, uuid.UUID, string, time.Time) error {
-	return nil
+func (m *mockOutboxRepo) MarkRetry(_ context.Context, id uuid.UUID, attempts int, nextAt time.Time, errMsg string, now time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.entries {
+		if e.ID == id {
+			e.Status = core.OutboxStatusPending
+			e.Attempts = attempts
+			e.NextAttemptAt = nextAt
+			e.LastError = errMsg
+			e.UpdatedAt = now
+			return nil
+		}
+	}
+	return core.ErrNotFound
+}
+func (m *mockOutboxRepo) MarkFailed(_ context.Context, id uuid.UUID, errMsg string, now time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.entries {
+		if e.ID == id {
+			e.Status = core.OutboxStatusFailed
+			e.LastError = errMsg
+			e.UpdatedAt = now
+			return nil
+		}
+	}
+	return core.ErrNotFound
 }
 func (m *mockOutboxRepo) List(context.Context, core.OutboxFilter) ([]*core.OutboxEntry, error) {
 	return m.entries, nil
 }
-func (m *mockOutboxRepo) GetByID(context.Context, uuid.UUID) (*core.OutboxEntry, error) {
+func (m *mockOutboxRepo) GetByID(_ context.Context, id uuid.UUID) (*core.OutboxEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.entries {
+		if e.ID == id {
+			return e, nil
+		}
+	}
 	return nil, core.ErrNotFound
 }
 func (m *mockOutboxRepo) SweepStuck(context.Context, time.Duration, time.Time) (int, error) {
