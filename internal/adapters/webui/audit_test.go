@@ -33,7 +33,6 @@ func setupAuditUIHandler(t *testing.T) (*Handler, core.AuditRepository) {
 }
 
 func TestUI_Audit_NoAuditStorage_503(t *testing.T) {
-	t.Parallel()
 	cfg := config.NewDefaultConfig()
 	cfg.Auth.Type = "token"
 	h := NewHandler(Config{Cfg: cfg})
@@ -47,7 +46,6 @@ func TestUI_Audit_NoAuditStorage_503(t *testing.T) {
 }
 
 func TestUI_Audit_ForbiddenForNonOwner(t *testing.T) {
-	t.Parallel()
 	h, _ := setupAuditUIHandler(t)
 	req := httptest.NewRequest(http.MethodGet, "/ui/audit", nil)
 	req = req.WithContext(core.WithRole(req.Context(), core.RoleEditor))
@@ -59,7 +57,6 @@ func TestUI_Audit_ForbiddenForNonOwner(t *testing.T) {
 }
 
 func TestUI_Audit_OwnerSeesEntries(t *testing.T) {
-	t.Parallel()
 	h, repo := setupAuditUIHandler(t)
 	ctx := context.Background()
 	for _, action := range []core.AuditAction{
@@ -90,7 +87,6 @@ func TestUI_Audit_OwnerSeesEntries(t *testing.T) {
 }
 
 func TestUI_Audit_FilterByAction(t *testing.T) {
-	t.Parallel()
 	h, repo := setupAuditUIHandler(t)
 	ctx := context.Background()
 	for _, action := range []core.AuditAction{
@@ -118,7 +114,6 @@ func TestUI_Audit_FilterByAction(t *testing.T) {
 }
 
 func TestUI_Audit_EmptyState(t *testing.T) {
-	t.Parallel()
 	h, _ := setupAuditUIHandler(t)
 	req := httptest.NewRequest(http.MethodGet, "/ui/audit", nil)
 	req = req.WithContext(core.WithRole(req.Context(), core.RoleOwner))
@@ -130,7 +125,6 @@ func TestUI_Audit_EmptyState(t *testing.T) {
 }
 
 func TestUI_Audit_MethodNotAllowed(t *testing.T) {
-	t.Parallel()
 	h, _ := setupAuditUIHandler(t)
 	req := httptest.NewRequest(http.MethodPost, "/ui/audit", nil)
 	req = req.WithContext(core.WithRole(req.Context(), core.RoleOwner))
