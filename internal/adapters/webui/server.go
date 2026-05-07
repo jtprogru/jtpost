@@ -28,6 +28,7 @@ type Handler struct {
 	authSvc   *core.AuthService    // nil — auth disabled, login UI отключён
 	auditSvc  *core.AuditService   // nil-safe (для записи)
 	auditRepo core.AuditRepository // nil — page /ui/audit вернёт 503
+	bus       core.EventBus        // nil — SSE-endpoint вернёт 503
 	cfg       *config.Config
 	log       *logger.Logger
 	mux       *http.ServeMux
@@ -41,6 +42,7 @@ type Config struct {
 	AuditRepo core.AuditRepository
 	Cfg       *config.Config
 	Logger    *logger.Logger
+	Bus       core.EventBus
 }
 
 // NewHandler создаёт UI handler с готовой подсетью routes.
@@ -55,6 +57,7 @@ func NewHandler(c Config) *Handler {
 		authSvc:   c.Auth,
 		auditSvc:  c.Audit,
 		auditRepo: c.AuditRepo,
+		bus:       c.Bus,
 		cfg:       c.Cfg,
 		log:       log,
 		mux:       http.NewServeMux(),
@@ -77,6 +80,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("/ui/calendar", h.handleCalendar)
 	h.mux.HandleFunc("/ui/upload", h.handleUpload)
 	h.mux.HandleFunc("/ui/uploads/", h.handleUploadServe)
+	h.mux.HandleFunc("/ui/events", h.handleEvents)
 	h.mux.HandleFunc("/ui/audit", h.handleAudit)
 	h.mux.HandleFunc("/ui/login", h.handleLogin)
 	h.mux.HandleFunc("/ui/logout", h.handleLogout)

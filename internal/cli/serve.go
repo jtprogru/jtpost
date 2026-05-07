@@ -92,11 +92,13 @@ var serveCmd = &cobra.Command{
 		}
 
 		// Web UI v2 (htmx + templ).
+		bus := core.NewMemoryBus(32)
 		ui := webui.NewHandler(webui.Config{
 			Service:   service,
 			Auth:      authSvc,
 			Audit:     auditSvc,
 			AuditRepo: bundle.AuditLog,
+			Bus:       bus,
 			Cfg:       cfg,
 			Logger:    log,
 		})

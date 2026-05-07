@@ -139,6 +139,7 @@ func (h *Handler) createPost(w http.ResponseWriter, r *http.Request) {
 		TenantID:     post.TenantID,
 		Metadata:     map[string]any{"via": "webui"},
 	})
+	h.publish("post.created", map[string]any{"id": post.ID.String(), "title": post.Title})
 	http.Redirect(w, r, "/ui/posts/"+post.ID.String()+"?saved=1", http.StatusSeeOther)
 }
 
@@ -170,6 +171,7 @@ func (h *Handler) deletePost(w http.ResponseWriter, r *http.Request, id core.Pos
 		TenantID:     post.TenantID,
 		Metadata:     map[string]any{"via": "webui", "title": post.Title},
 	})
+	h.publish("post.deleted", map[string]any{"id": id.String()})
 	http.Redirect(w, r, "/ui/", http.StatusSeeOther)
 }
 
@@ -262,6 +264,7 @@ func (h *Handler) savePost(w http.ResponseWriter, r *http.Request, id core.PostI
 		TenantID:     post.TenantID,
 		Metadata:     map[string]any{"via": "webui"},
 	})
+	h.publish("post.updated", map[string]any{"id": id.String(), "status": string(post.Status)})
 	// PRG: redirect на тот же URL с ?saved=1 (избегаем re-submit при F5).
 	http.Redirect(w, r, "/ui/posts/"+id.String()+"?saved=1", http.StatusSeeOther)
 }

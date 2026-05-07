@@ -18,7 +18,13 @@ templ Dashboard(p DashboardProps) {
 	@Layout(LayoutProps{Title: "Posts", ActiveNav: "dashboard", UserEmail: p.UserEmail}) {
 		<h1>Posts</h1>
 		@dashboardToolbar(p)
-		<div id="posts-table">
+		<div
+			id="posts-table"
+			hx-get="/ui/posts"
+			hx-trigger="jtpost:posts-changed from:body"
+			hx-include="[name=search],[name=status]"
+			hx-swap="innerHTML"
+		>
 			@PostsTable(p.Posts)
 		</div>
 	}
