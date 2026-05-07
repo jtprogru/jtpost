@@ -47,8 +47,15 @@ func setupContainer(t *testing.T) string {
 		tcpostgres.WithDatabase("jtpost"),
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),
+		// Postgres alpine стартует postgres дважды (init + serve). Wait по порту
+		// ловит первый запуск и приводит к "connection reset by peer" в CI.
+		// Используем log-strategy + readiness-проверку через pg_isready.
 		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(60*time.Second),
+			wait.ForAll(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2),
+				wait.ForListeningPort("5432/tcp"),
+			).WithStartupTimeoutDefault(90*time.Second),
 		),
 	)
 	if err != nil {

@@ -25,13 +25,15 @@ func newPgRepoForOutbox(t *testing.T) *PostRepository {
 }
 
 func makePgOutboxEntry() *core.OutboxEntry {
+	// NextAttemptAt в прошлом: гарантирует claim-success даже при дрейфе
+	// между моментом захвата `now` в тесте и моментом Enqueue (важно в CI).
 	return &core.OutboxEntry{
 		PostID:        core.PostID(uuid.New()),
 		TenantID:      uuid.New(),
 		Kind:          core.OutboxKindPublish,
 		Status:        core.OutboxStatusPending,
 		MaxAttempts:   3,
-		NextAttemptAt: time.Now().UTC(),
+		NextAttemptAt: time.Now().UTC().Add(-time.Second),
 	}
 }
 
