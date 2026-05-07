@@ -30,6 +30,14 @@ templ Revision(p RevisionProps) {
 			<div class="form-error">{ p.ErrMessage }</div>
 		} else {
 			<pre class="md-preview revision-content">{ p.Content }</pre>
+			<form
+				method="post"
+				action={ templ.URL("/ui/posts/" + p.Post.ID.String() + "/history/" + p.Hash + "/revert") }
+				onsubmit="return confirm('Вернуть пост к этой ревизии? Текущие title/content/tags будут перезаписаны.');"
+				class="post-edit__revert-form"
+			>
+				<button type="submit" class="btn btn--danger">Вернуть к этой версии</button>
+			</form>
 		}
 	}
 }

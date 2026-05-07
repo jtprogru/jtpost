@@ -42,15 +42,26 @@ func (h *Handler) handlePostByID(w http.ResponseWriter, r *http.Request) {
 		h.handlePostHistory(w, r, parsed)
 		return
 	}
-	// /ui/posts/{id}/history/{hash}
-	if hash, ok := extractRevisionHash(rest); ok {
-		idStr := strings.TrimSuffix(rest, "/history/"+hash)
+	// /ui/posts/{id}/history/{hash}[/revert]
+	if idStr, after, ok := strings.Cut(rest, "/history/"); ok {
 		parsed, err := core.ParsePostID(idStr)
 		if err != nil {
 			http.Error(w, "invalid post id", http.StatusBadRequest)
 			return
 		}
-		h.handlePostRevision(w, r, parsed, hash)
+		if hash, isRevert := strings.CutSuffix(after, "/revert"); isRevert {
+			if hash == "" || strings.Contains(hash, "/") {
+				http.NotFound(w, r)
+				return
+			}
+			h.handlePostRevert(w, r, parsed, hash)
+			return
+		}
+		if after == "" || strings.Contains(after, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		h.handlePostRevision(w, r, parsed, after)
 		return
 	}
 	if strings.Contains(rest, "/") {
@@ -215,6 +226,7 @@ func (h *Handler) renderPostEdit(w http.ResponseWriter, r *http.Request, id core
 		Post:      post,
 		UserEmail: userEmailFromContext(r.Context()),
 		Saved:     saved,
+		Reverted:  r.URL.Query().Get("reverted") == "1",
 		Error:     errMsg,
 	}
 	if err := components.PostEdit(props).Render(r.Context(), w); err != nil {

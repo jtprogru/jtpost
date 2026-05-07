@@ -19,6 +19,7 @@ type PostEditProps struct {
 	Post      *core.Post
 	UserEmail string
 	Saved     bool   // ?saved=1 — показать success-flash
+	Reverted  bool   // ?reverted=1 — показать revert-success-flash
 	Error     string // inline error (validation / save fail)
 }
 
@@ -62,7 +63,7 @@ func PostEdit(p PostEditProps) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(p.Post.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 22, Col: 22}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 23, Col: 22}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -97,7 +98,7 @@ func PostEdit(p PostEditProps) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(string(p.Post.Status))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 25, Col: 29}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 26, Col: 29}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -110,7 +111,7 @@ func PostEdit(p PostEditProps) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(p.Post.ID.String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 27, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 28, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -123,7 +124,7 @@ func PostEdit(p PostEditProps) templ.Component {
 			var templ_7745c5c3_Var8 templ.SafeURL
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/ui/posts/" + p.Post.ID.String() + "/history"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 28, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 29, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -139,124 +140,130 @@ func PostEdit(p PostEditProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
+			if p.Reverted {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"form-success\">✓ Пост возвращён к выбранной ревизии</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
 			if p.Error != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"form-error\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"form-error\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(p.Error)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 36, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 40, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<form method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 templ.SafeURL
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/ui/posts/" + p.Post.ID.String()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 41, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 45, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" class=\"post-edit__form\"><label>Title <input type=\"text\" name=\"title\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" class=\"post-edit__form\"><label>Title <input type=\"text\" name=\"title\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(p.Post.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 46, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 50, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" required></label> <label>Status <select name=\"status\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" required></label> <label>Status <select name=\"status\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, s := range []string{"idea", "draft", "ready", "scheduled", "published", "failed"} {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<option value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<option value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(s)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 52, Col: 24}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 56, Col: 24}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if string(p.Post.Status) == s {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " selected")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, " selected")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, ">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, ">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(s)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 52, Col: 71}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 56, Col: 71}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</option>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</option>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</select></label> <label>Tags (comma-separated) <input type=\"text\" name=\"tags\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</select></label> <label>Tags (comma-separated) <input type=\"text\" name=\"tags\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(strings.Join(p.Post.Tags, ", "))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 58, Col: 75}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 62, Col: 75}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\"></label><div class=\"post-edit__split\"><label class=\"post-edit__editor\">Content (Markdown)<div class=\"post-edit__editor-actions\"><button type=\"button\" class=\"btn btn--ghost\" onclick=\"document.getElementById('md-image-input').click()\">📎 Upload image</button> <span class=\"post-edit__upload-hint\">или перетащи файл в редактор</span> <input type=\"file\" id=\"md-image-input\" accept=\"image/*\" style=\"display:none\" onchange=\"jtpostUploadFiles(this.files)\"></div><textarea id=\"md-textarea\" name=\"content\" rows=\"22\" ondragover=\"event.preventDefault(); this.classList.add('drop-active')\" ondragleave=\"this.classList.remove('drop-active')\" ondrop=\"event.preventDefault(); this.classList.remove('drop-active'); jtpostUploadFiles(event.dataTransfer.files)\" hx-post=\"/ui/preview\" hx-trigger=\"input changed delay:400ms\" hx-target=\"#md-preview\" hx-swap=\"innerHTML\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\"></label><div class=\"post-edit__split\"><label class=\"post-edit__editor\">Content (Markdown)<div class=\"post-edit__editor-actions\"><button type=\"button\" class=\"btn btn--ghost\" onclick=\"document.getElementById('md-image-input').click()\">📎 Upload image</button> <span class=\"post-edit__upload-hint\">или перетащи файл в редактор</span> <input type=\"file\" id=\"md-image-input\" accept=\"image/*\" style=\"display:none\" onchange=\"jtpostUploadFiles(this.files)\"></div><textarea id=\"md-textarea\" name=\"content\" rows=\"22\" ondragover=\"event.preventDefault(); this.classList.add('drop-active')\" ondragleave=\"this.classList.remove('drop-active')\" ondrop=\"event.preventDefault(); this.classList.remove('drop-active'); jtpostUploadFiles(event.dataTransfer.files)\" hx-post=\"/ui/preview\" hx-trigger=\"input changed delay:400ms\" hx-target=\"#md-preview\" hx-swap=\"innerHTML\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(p.Post.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 81, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 85, Col: 23}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</textarea></label><div class=\"post-edit__preview\"><span class=\"post-edit__preview-label\">Preview</span><div id=\"md-preview\" class=\"md-preview\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</textarea></label><div class=\"post-edit__preview\"><span class=\"post-edit__preview-label\">Preview</span><div id=\"md-preview\" class=\"md-preview\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -264,20 +271,20 @@ func PostEdit(p PostEditProps) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div></div></div><div class=\"post-edit__actions\"><button type=\"submit\" class=\"btn\">Save</button> <a href=\"/ui/\" class=\"post-edit__back\">Cancel</a></div></form><form method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</div></div></div><div class=\"post-edit__actions\"><button type=\"submit\" class=\"btn\">Save</button> <a href=\"/ui/\" class=\"post-edit__back\">Cancel</a></div></form><form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var16 templ.SafeURL
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/ui/posts/" + p.Post.ID.String() + "/delete"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 97, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/post_edit.templ`, Line: 101, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" onsubmit=\"return confirm('Удалить пост безвозвратно?');\" class=\"post-edit__delete-form\"><button type=\"submit\" class=\"btn btn--danger\">Удалить пост</button></form></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" onsubmit=\"return confirm('Удалить пост безвозвратно?');\" class=\"post-edit__delete-form\"><button type=\"submit\" class=\"btn btn--danger\">Удалить пост</button></form></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

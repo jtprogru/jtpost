@@ -22,6 +22,7 @@ const (
 	AuditPostUpdated      AuditAction = "post.updated"
 	AuditPostDeleted      AuditAction = "post.deleted"
 	AuditPostPublished    AuditAction = "post.published"
+	AuditPostReverted     AuditAction = "post.reverted"
 	AuditImageUploaded    AuditAction = "image.uploaded"
 )
 

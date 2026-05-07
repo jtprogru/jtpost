@@ -11,6 +11,7 @@ type PostEditProps struct {
 	Post      *core.Post
 	UserEmail string
 	Saved     bool   // ?saved=1 — показать success-flash
+	Reverted  bool   // ?reverted=1 — показать revert-success-flash
 	Error     string // inline error (validation / save fail)
 }
 
@@ -31,6 +32,9 @@ templ PostEdit(p PostEditProps) {
 
 			if p.Saved {
 				<div class="form-success">✓ Сохранено</div>
+			}
+			if p.Reverted {
+				<div class="form-success">✓ Пост возвращён к выбранной ревизии</div>
 			}
 			if p.Error != "" {
 				<div class="form-error">{ p.Error }</div>

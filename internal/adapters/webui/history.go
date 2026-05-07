@@ -1,12 +1,15 @@
 package webui
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/jtprogru/jtpost/internal/adapters/webui/components"
 	"github.com/jtprogru/jtpost/internal/core"
+	"gopkg.in/yaml.v3"
 )
 
 // handlePostHistory — GET /ui/posts/{id}/history.
@@ -100,12 +103,83 @@ func (h *Handler) handlePostRevision(w http.ResponseWriter, r *http.Request, id 
 	}
 }
 
-// extractRevisionHash проверяет суффикс пути `/history/<hash>` и возвращает
-// hash. Возвращает "", false если pattern не совпал.
-func extractRevisionHash(rest string) (string, bool) {
-	_, hash, ok := strings.Cut(rest, "/history/")
-	if !ok || hash == "" || strings.Contains(hash, "/") {
-		return "", false
+// handlePostRevert — POST /ui/posts/{id}/history/{hash}/revert.
+// Откатывает Title/Content/Tags поста к содержимому файла на указанной ревизии.
+// Lifecycle-поля (Status, ScheduledAt, Deadline, PublishedAt, External) не трогаются.
+func (h *Handler) handlePostRevert(w http.ResponseWriter, r *http.Request, id core.PostID, hash string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
-	return hash, true
+	if h.history == nil {
+		http.Error(w, "history not available for this storage", http.StatusServiceUnavailable)
+		return
+	}
+	post, err := h.service.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		h.log.Error("ui revert get: %v", err)
+		http.Error(w, "internal", http.StatusInternalServerError)
+		return
+	}
+	body, ferr := h.history.FileAtCommit(r.Context(), post, hash)
+	if ferr != nil {
+		if errors.Is(ferr, core.ErrNotFound) {
+			http.Error(w, "ревизия не найдена", http.StatusNotFound)
+			return
+		}
+		h.log.Error("ui revert fetch: %v", ferr)
+		http.Error(w, "не удалось получить ревизию: "+ferr.Error(), http.StatusInternalServerError)
+		return
+	}
+	title, content, tags, perr := parseRevertSnapshot(body)
+	if perr != nil {
+		http.Error(w, "не удалось распарсить ревизию: "+perr.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	post.Title = title
+	post.Content = content
+	post.Tags = tags
+	if err := h.service.UpdatePost(r.Context(), post); err != nil {
+		h.log.Error("ui revert update: %v", err)
+		http.Error(w, "ошибка сохранения: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if h.auditSvc != nil {
+		_ = h.auditSvc.Log(r.Context(), core.AuditEntry{
+			Action:       core.AuditPostReverted,
+			Outcome:      core.AuditOutcomeSuccess,
+			ResourceType: "post",
+			ResourceID:   id.String(),
+			TenantID:     post.TenantID,
+			Metadata:     map[string]any{"via": "webui", "hash": hash},
+		})
+	}
+	h.publish("post.updated", map[string]any{"id": id.String(), "status": string(post.Status)})
+	http.Redirect(w, r, "/ui/posts/"+id.String()+"?reverted=1", http.StatusSeeOther)
+}
+
+// parseRevertSnapshot извлекает Title/Content/Tags из raw bytes ревизионного
+// файла поста (markdown с YAML frontmatter). Используется только для revert —
+// lifecycle-поля игнорируются намеренно.
+func parseRevertSnapshot(data []byte) (title, content string, tags []string, err error) {
+	trimmed := bytes.TrimPrefix(data, []byte("---\n"))
+	parts := bytes.SplitN(trimmed, []byte("\n---\n"), 2)
+	if len(parts) < 2 {
+		return "", "", nil, errors.New("invalid frontmatter format")
+	}
+	var fm struct {
+		Title string   `yaml:"title"`
+		Tags  []string `yaml:"tags"`
+	}
+	if err := yaml.Unmarshal(parts[0], &fm); err != nil {
+		return "", "", nil, fmt.Errorf("yaml: %w", err)
+	}
+	if strings.TrimSpace(fm.Title) == "" {
+		return "", "", nil, errors.New("missing title in revision")
+	}
+	return fm.Title, strings.TrimSpace(string(parts[1])), fm.Tags, nil
 }
