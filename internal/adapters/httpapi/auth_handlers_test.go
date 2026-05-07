@@ -51,7 +51,7 @@ func TestLoginHandler_Success(t *testing.T) {
 	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	LoginHandler(svc, cfg)(rec, req)
+	LoginHandler(svc, cfg, nil)(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d, want 200", rec.Code)
@@ -90,7 +90,7 @@ func TestLoginHandler_WrongPassword(t *testing.T) {
 	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "wrong"})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	LoginHandler(svc, cfg)(rec, req)
+	LoginHandler(svc, cfg, nil)(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status=%d, want 401", rec.Code)
 	}
@@ -100,7 +100,7 @@ func TestLogoutHandler_NoCookie_Idempotent(t *testing.T) {
 	svc, cfg := setupHandler(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	rec := httptest.NewRecorder()
-	LogoutHandler(svc, cfg)(rec, req)
+	LogoutHandler(svc, cfg, nil)(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("status=%d, want 200", rec.Code)
 	}
@@ -129,7 +129,7 @@ func TestCSRFHandler_WithSession_NewCSRF(t *testing.T) {
 	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	loginRec := httptest.NewRecorder()
-	LoginHandler(svc, cfg)(loginRec, loginReq)
+	LoginHandler(svc, cfg, nil)(loginRec, loginReq)
 	var loginResp oapigen.LoginResponse
 	_ = json.Unmarshal(loginRec.Body.Bytes(), &loginResp)
 	oldCSRF := loginResp.CsrfToken
@@ -169,7 +169,7 @@ func TestE2E_LoginThenAuthenticated_GET(t *testing.T) {
 	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	loginRec := httptest.NewRecorder()
-	LoginHandler(svc, cfg)(loginRec, loginReq)
+	LoginHandler(svc, cfg, nil)(loginRec, loginReq)
 	if loginRec.Code != http.StatusOK {
 		t.Fatalf("login failed: %d", loginRec.Code)
 	}

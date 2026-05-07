@@ -8,6 +8,21 @@ import (
 	"database/sql"
 )
 
+type AuditLog struct {
+	ID           string
+	OccurredAt   string
+	TenantID     string
+	ActorID      string
+	ActorType    string
+	Action       string
+	ResourceType string
+	ResourceID   string
+	Outcome      string
+	Ip           string
+	UserAgent    string
+	Metadata     string
+}
+
 type OauthAccount struct {
 	ID         string
 	UserID     string

@@ -24,6 +24,7 @@ type Server struct {
 	publisher core.Publisher
 	authSvc   *core.AuthService  // nil if auth.type != token
 	oauthSvc  *core.OAuthService // nil if no providers configured
+	auditSvc  *core.AuditService // nil if storage не поддерживает audit (fs)
 	outbox    core.OutboxRepository
 	mux       *http.ServeMux
 	log       *logger.Logger
@@ -36,6 +37,7 @@ type ServerConfig struct {
 	Publisher    core.Publisher
 	AuthService  *core.AuthService
 	OAuthService *core.OAuthService
+	AuditService *core.AuditService
 	Outbox       core.OutboxRepository
 	Logger       *logger.Logger
 	Config       *config.Config
@@ -62,6 +64,7 @@ func NewServerWithConfig(cfg ServerConfig) *Server {
 		publisher: cfg.Publisher,
 		authSvc:   cfg.AuthService,
 		oauthSvc:  cfg.OAuthService,
+		auditSvc:  cfg.AuditService,
 		outbox:    cfg.Outbox,
 		mux:       http.NewServeMux(),
 		log:       log,
@@ -102,8 +105,8 @@ func (s *Server) registerRoutes() {
 	s.bothPrefixes("/api/outbox", s.apply(s.handleOutbox))
 	s.bothPrefixes("/api/outbox/", s.apply(s.handleOutboxByID))
 	if s.authSvc != nil && s.cfg != nil {
-		s.bothPrefixesFunc("/api/auth/login", LoginHandler(s.authSvc, s.cfg))
-		s.bothPrefixesFunc("/api/auth/logout", LogoutHandler(s.authSvc, s.cfg))
+		s.bothPrefixesFunc("/api/auth/login", LoginHandler(s.authSvc, s.cfg, s.auditSvc))
+		s.bothPrefixesFunc("/api/auth/logout", LogoutHandler(s.authSvc, s.cfg, s.auditSvc))
 		s.bothPrefixesFunc("/api/auth/csrf", CSRFHandler(s.authSvc))
 	}
 	if s.oauthSvc != nil && s.authSvc != nil && s.cfg != nil {

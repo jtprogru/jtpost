@@ -272,6 +272,21 @@ func writeUnauthorized(w http.ResponseWriter) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 }
 
+// AuditContextMiddleware кладёт в ctx IP клиента и User-Agent — необходимо
+// AuditService.Log для заполнения полей. trustProxy=true — берёт IP из
+// X-Forwarded-For/X-Real-IP (только за trusted reverse proxy).
+func AuditContextMiddleware(trustProxy bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := core.WithAuditContext(r.Context(), core.AuditContext{
+				IP:        clientIP(r, trustProxy),
+				UserAgent: r.UserAgent(),
+			})
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // RecoveryMiddleware middleware для восстановления после паник.
 func RecoveryMiddleware(log *logger.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -84,12 +84,19 @@ var serveCmd = &cobra.Command{
 			oauthSvc = buildOAuthService(cfg, bundle, log)
 		}
 
+		// AuditService — nil-safe wrapper над AuditRepository (nil для fs).
+		var auditSvc *core.AuditService
+		if bundle.AuditLog != nil {
+			auditSvc = core.NewAuditService(bundle.AuditLog, core.SystemClock{})
+		}
+
 		// Создаём HTTP сервер с логгером
 		serverCfg := httpapi.ServerConfig{
 			Service:      service,
 			Publisher:    publisher,
 			AuthService:  authSvc,
 			OAuthService: oauthSvc,
+			AuditService: auditSvc,
 			Outbox:       bundle.Outbox,
 			Logger:       log,
 			Config:       cfg,
@@ -108,6 +115,9 @@ var serveCmd = &cobra.Command{
 		} else {
 			handler = httpapi.TenantFromConfigMiddleware(cfg)(handler)
 		}
+		// AuditContext (IP/UA) до auth, чтобы все handler'ы (включая
+		// неаутентифицированный login) получили эти поля в ctx.
+		handler = httpapi.AuditContextMiddleware(cfg.Server.RateLimit.TrustProxyHeader)(handler)
 		// Rate limit идёт после auth, чтобы ключевание шло по User.ID при
 		// аутентифицированных запросах (см. RateLimitMiddleware).
 		// Применяется до LoggingMiddleware → отказы тоже логируются.

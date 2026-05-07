@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/httpapi/oapigen"
 	"github.com/jtprogru/jtpost/internal/core"
@@ -16,7 +17,7 @@ import (
 // api/openapi.yaml). См. internal/adapters/httpapi/oapigen/types.gen.go.
 
 // LoginHandler handles POST /api/auth/login.
-func LoginHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
+func LoginHandler(svc *core.AuthService, cfg *config.Config, audit *core.AuditService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -43,6 +44,13 @@ func LoginHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
 			Password: req.Password,
 		}, ttl)
 		if err != nil {
+			_ = audit.Log(r.Context(), core.AuditEntry{
+				Action:    core.AuditAuthLoginFail,
+				Outcome:   core.AuditOutcomeFailure,
+				ActorType: core.AuditActorAnonymous,
+				TenantID:  cfg.Auth.TenantDefault,
+				Metadata:  map[string]any{"email": string(req.Email)},
+			})
 			if errors.Is(err, core.ErrUnauthorized) {
 				writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 				return
@@ -51,6 +59,13 @@ func LoginHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 		setSessionCookie(w, cfg, res.RawToken, res.Session.ExpiresAt)
+		_ = audit.Log(r.Context(), core.AuditEntry{
+			Action:    core.AuditAuthLoginSuccess,
+			Outcome:   core.AuditOutcomeSuccess,
+			ActorID:   res.User.ID,
+			ActorType: core.AuditActorUser,
+			TenantID:  res.User.TenantID,
+		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(oapigen.LoginResponse{
@@ -63,18 +78,31 @@ func LoginHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
 }
 
 // LogoutHandler handles POST /api/auth/logout. Idempotent.
-func LogoutHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
+func LogoutHandler(svc *core.AuthService, cfg *config.Config, audit *core.AuditService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		var actorID = uuid.Nil
+		var tenantID = uuid.Nil
 		if c, err := r.Cookie(SessionCookieName); err == nil && c.Value != "" {
-			if _, _, sess, vErr := svc.ValidateSession(r.Context(), c.Value); vErr == nil && sess != nil {
+			if u, _, sess, vErr := svc.ValidateSession(r.Context(), c.Value); vErr == nil && sess != nil {
+				if u != nil {
+					actorID = u.ID
+					tenantID = u.TenantID
+				}
 				_ = svc.Logout(r.Context(), sess.ID)
 			}
 		}
 		clearSessionCookie(w, cfg)
+		_ = audit.Log(r.Context(), core.AuditEntry{
+			Action:    core.AuditAuthLogout,
+			Outcome:   core.AuditOutcomeSuccess,
+			ActorID:   actorID,
+			ActorType: core.AuditActorUser,
+			TenantID:  tenantID,
+		})
 		w.WriteHeader(http.StatusOK)
 	}
 }
