@@ -21,12 +21,13 @@ const OAuthStateMaxAge = 600
 type OAuthHandler struct {
 	oauthSvc *core.OAuthService
 	authSvc  *core.AuthService
+	auditSvc *core.AuditService // nil-safe
 	cfg      *config.Config
 }
 
 // NewOAuthHandler создаёт handler.
-func NewOAuthHandler(oauthSvc *core.OAuthService, authSvc *core.AuthService, cfg *config.Config) *OAuthHandler {
-	return &OAuthHandler{oauthSvc: oauthSvc, authSvc: authSvc, cfg: cfg}
+func NewOAuthHandler(oauthSvc *core.OAuthService, authSvc *core.AuthService, audit *core.AuditService, cfg *config.Config) *OAuthHandler {
+	return &OAuthHandler{oauthSvc: oauthSvc, authSvc: authSvc, auditSvc: audit, cfg: cfg}
 }
 
 // ServeHTTP — единая точка входа для path-routing /api/auth/oauth/{provider}[/callback].
@@ -122,6 +123,12 @@ func (h *OAuthHandler) handleCallback(w http.ResponseWriter, r *http.Request, pr
 
 	user, err := h.oauthSvc.HandleCallback(r.Context(), provider, code)
 	if err != nil {
+		_ = h.auditSvc.Log(r.Context(), core.AuditEntry{
+			Action:    core.AuditAuthOAuthLogin,
+			Outcome:   core.AuditOutcomeFailure,
+			ActorType: core.AuditActorAnonymous,
+			Metadata:  map[string]any{"provider": provider, "reason": err.Error()},
+		})
 		if errors.Is(err, core.ErrValidation) {
 			writeJSONError(w, http.StatusBadRequest, "oauth_user_info_invalid")
 			return
@@ -140,5 +147,13 @@ func (h *OAuthHandler) handleCallback(w http.ResponseWriter, r *http.Request, pr
 		return
 	}
 	setSessionCookie(w, h.cfg, res.RawToken, res.Session.ExpiresAt)
+	_ = h.auditSvc.Log(r.Context(), core.AuditEntry{
+		Action:    core.AuditAuthOAuthLogin,
+		Outcome:   core.AuditOutcomeSuccess,
+		ActorID:   user.ID,
+		ActorType: core.AuditActorUser,
+		TenantID:  user.TenantID,
+		Metadata:  map[string]any{"provider": provider},
+	})
 	http.Redirect(w, r, "/", http.StatusFound)
 }

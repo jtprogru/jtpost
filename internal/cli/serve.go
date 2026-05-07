@@ -97,6 +97,7 @@ var serveCmd = &cobra.Command{
 			AuthService:  authSvc,
 			OAuthService: oauthSvc,
 			AuditService: auditSvc,
+			AuditRepo:    bundle.AuditLog,
 			Outbox:       bundle.Outbox,
 			Logger:       log,
 			Config:       cfg,

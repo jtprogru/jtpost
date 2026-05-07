@@ -24,7 +24,8 @@ type Server struct {
 	publisher core.Publisher
 	authSvc   *core.AuthService  // nil if auth.type != token
 	oauthSvc  *core.OAuthService // nil if no providers configured
-	auditSvc  *core.AuditService // nil if storage не поддерживает audit (fs)
+	auditSvc  *core.AuditService    // nil if storage не поддерживает audit (fs)
+	auditRepo core.AuditRepository  // nil if storage не поддерживает audit; нужен для read-API
 	outbox    core.OutboxRepository
 	mux       *http.ServeMux
 	log       *logger.Logger
@@ -38,6 +39,7 @@ type ServerConfig struct {
 	AuthService  *core.AuthService
 	OAuthService *core.OAuthService
 	AuditService *core.AuditService
+	AuditRepo    core.AuditRepository
 	Outbox       core.OutboxRepository
 	Logger       *logger.Logger
 	Config       *config.Config
@@ -65,6 +67,7 @@ func NewServerWithConfig(cfg ServerConfig) *Server {
 		authSvc:   cfg.AuthService,
 		oauthSvc:  cfg.OAuthService,
 		auditSvc:  cfg.AuditService,
+		auditRepo: cfg.AuditRepo,
 		outbox:    cfg.Outbox,
 		mux:       http.NewServeMux(),
 		log:       log,
@@ -104,13 +107,16 @@ func (s *Server) registerRoutes() {
 	s.bothPrefixes("/api/tags", s.apply(s.handleTags))
 	s.bothPrefixes("/api/outbox", s.apply(s.handleOutbox))
 	s.bothPrefixes("/api/outbox/", s.apply(s.handleOutboxByID))
+	if s.auditRepo != nil {
+		s.bothPrefixesFunc("/api/audit", AuditHandler(s.auditRepo))
+	}
 	if s.authSvc != nil && s.cfg != nil {
 		s.bothPrefixesFunc("/api/auth/login", LoginHandler(s.authSvc, s.cfg, s.auditSvc))
 		s.bothPrefixesFunc("/api/auth/logout", LogoutHandler(s.authSvc, s.cfg, s.auditSvc))
 		s.bothPrefixesFunc("/api/auth/csrf", CSRFHandler(s.authSvc))
 	}
 	if s.oauthSvc != nil && s.authSvc != nil && s.cfg != nil {
-		oauthHandler := NewOAuthHandler(s.oauthSvc, s.authSvc, s.cfg)
+		oauthHandler := NewOAuthHandler(s.oauthSvc, s.authSvc, s.auditSvc, s.cfg)
 		s.bothPrefixes("/api/auth/oauth/", oauthHandler)
 	}
 	s.mux.HandleFunc("/", s.handleIndex)
@@ -349,6 +355,13 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.log.Info("CreatePost success id=%s", post.ID)
+	_ = s.auditSvc.Log(r.Context(), core.AuditEntry{
+		Action:       core.AuditPostCreated,
+		Outcome:      core.AuditOutcomeSuccess,
+		ResourceType: "post",
+		ResourceID:   post.ID.String(),
+		TenantID:     post.TenantID,
+	})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
@@ -510,6 +523,13 @@ func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.Post
 	}
 
 	s.log.Info("UpdatePost success id=%s", id)
+	_ = s.auditSvc.Log(r.Context(), core.AuditEntry{
+		Action:       core.AuditPostUpdated,
+		Outcome:      core.AuditOutcomeSuccess,
+		ResourceType: "post",
+		ResourceID:   id.String(),
+		TenantID:     post.TenantID,
+	})
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
 }
@@ -527,6 +547,12 @@ func (s *Server) deletePost(w http.ResponseWriter, r *http.Request, id core.Post
 	}
 
 	s.log.Info("DeletePost success id=%s", id)
+	_ = s.auditSvc.Log(r.Context(), core.AuditEntry{
+		Action:       core.AuditPostDeleted,
+		Outcome:      core.AuditOutcomeSuccess,
+		ResourceType: "post",
+		ResourceID:   id.String(),
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -720,6 +746,13 @@ func (s *Server) publishPost(w http.ResponseWriter, r *http.Request, id core.Pos
 	}
 
 	s.log.Info("PublishPost success id=%s", id)
+	_ = s.auditSvc.Log(r.Context(), core.AuditEntry{
+		Action:       core.AuditPostPublished,
+		Outcome:      core.AuditOutcomeSuccess,
+		ResourceType: "post",
+		ResourceID:   id.String(),
+		TenantID:     post.TenantID,
+	})
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
 }

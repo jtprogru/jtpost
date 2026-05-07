@@ -71,7 +71,7 @@ func setupOAuth(t *testing.T) *OAuthHandler {
 		core.RoleAuthor,
 		core.SystemClock{},
 	)
-	return NewOAuthHandler(oauthSvc, authSvc, cfg)
+	return NewOAuthHandler(oauthSvc, authSvc, nil, cfg)
 }
 
 func TestOAuthHandler_Initiate_RedirectAndCookie(t *testing.T) {
