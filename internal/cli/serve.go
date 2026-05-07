@@ -96,12 +96,18 @@ var serveCmd = &cobra.Command{
 
 		// Web UI v2 (htmx + templ).
 		bus := core.NewMemoryBus(32)
+		// HistoryProvider — опциональный, реализован только в gitrepo.
+		var history core.HistoryProvider
+		if hp, ok := bundle.Posts.(core.HistoryProvider); ok {
+			history = hp
+		}
 		ui := webui.NewHandler(webui.Config{
 			Service:   service,
 			Auth:      authSvc,
 			Audit:     auditSvc,
 			AuditRepo: bundle.AuditLog,
 			Bus:       bus,
+			History:   history,
 			Cfg:       cfg,
 			Logger:    log,
 		})

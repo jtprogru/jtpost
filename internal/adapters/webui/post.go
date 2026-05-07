@@ -32,6 +32,16 @@ func (h *Handler) handlePostByID(w http.ResponseWriter, r *http.Request) {
 		h.deletePost(w, r, parsed)
 		return
 	}
+	// /ui/posts/{id}/history
+	if id, ok := strings.CutSuffix(rest, "/history"); ok {
+		parsed, err := core.ParsePostID(id)
+		if err != nil {
+			http.Error(w, "invalid post id", http.StatusBadRequest)
+			return
+		}
+		h.handlePostHistory(w, r, parsed)
+		return
+	}
 	if strings.Contains(rest, "/") {
 		http.NotFound(w, r)
 		return

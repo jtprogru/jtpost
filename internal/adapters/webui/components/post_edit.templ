@@ -25,6 +25,7 @@ templ PostEdit(p PostEditProps) {
 						{ string(p.Post.Status) }
 					</span>
 					<span class="post-edit__id">id: { p.Post.ID.String() }</span>
+					<a href={ templ.URL("/ui/posts/" + p.Post.ID.String() + "/history") } class="post-edit__back">📜 History</a>
 				</div>
 			</div>
 

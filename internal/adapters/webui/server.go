@@ -29,6 +29,7 @@ type Handler struct {
 	auditSvc  *core.AuditService   // nil-safe (для записи)
 	auditRepo core.AuditRepository // nil — page /ui/audit вернёт 503
 	bus       core.EventBus        // nil — SSE-endpoint вернёт 503
+	history   core.HistoryProvider // nil — history page рендерит stub
 	cfg       *config.Config
 	log       *logger.Logger
 	mux       *http.ServeMux
@@ -43,6 +44,7 @@ type Config struct {
 	Cfg       *config.Config
 	Logger    *logger.Logger
 	Bus       core.EventBus
+	History   core.HistoryProvider
 }
 
 // NewHandler создаёт UI handler с готовой подсетью routes.
@@ -58,6 +60,7 @@ func NewHandler(c Config) *Handler {
 		auditSvc:  c.Audit,
 		auditRepo: c.AuditRepo,
 		bus:       c.Bus,
+		history:   c.History,
 		cfg:       c.Cfg,
 		log:       log,
 		mux:       http.NewServeMux(),

@@ -1,0 +1,48 @@
+package components
+
+import (
+	"github.com/jtprogru/jtpost/internal/core"
+)
+
+// HistoryProps — данные для history page.
+type HistoryProps struct {
+	Post      *core.Post
+	Entries   []core.HistoryEntry
+	Available bool // false → storage не поддерживает history (не git)
+	UserEmail string
+}
+
+templ History(p HistoryProps) {
+	@Layout(LayoutProps{Title: "History · " + p.Post.Title, ActiveNav: "dashboard", UserEmail: p.UserEmail}) {
+		<div class="post-edit__header">
+			<a href={ templ.URL("/ui/posts/" + p.Post.ID.String()) } class="post-edit__back">← Edit post</a>
+			<h1>История: { p.Post.Title }</h1>
+		</div>
+		if !p.Available {
+			<div class="empty">История недоступна — текущий storage не поддерживает версионирование.</div>
+		} else if len(p.Entries) == 0 {
+			<div class="empty">Изменений ещё не зафиксировано (или файл не отслеживается git).</div>
+		} else {
+			<table class="posts-table history-table">
+				<thead>
+					<tr>
+						<th>Когда</th>
+						<th>Автор</th>
+						<th>Hash</th>
+						<th>Сообщение</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, e := range p.Entries {
+						<tr>
+							<td>{ e.At.Format("2006-01-02 15:04") }</td>
+							<td>{ e.Author }</td>
+							<td><code>{ e.ShortHash }</code></td>
+							<td>{ e.Message }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+	}
+}
