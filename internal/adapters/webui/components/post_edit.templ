@@ -1,0 +1,92 @@
+package components
+
+import (
+	"strings"
+
+	"github.com/jtprogru/jtpost/internal/core"
+)
+
+// PostEditProps — данные edit page для существующего поста.
+type PostEditProps struct {
+	Post      *core.Post
+	UserEmail string
+	Saved     bool   // ?saved=1 — показать success-flash
+	Error     string // inline error (validation / save fail)
+}
+
+templ PostEdit(p PostEditProps) {
+	@Layout(LayoutProps{Title: p.Post.Title, ActiveNav: "dashboard", UserEmail: p.UserEmail}) {
+		<div class="post-edit">
+			<div class="post-edit__header">
+				<a href="/ui/" class="post-edit__back">← All posts</a>
+				<h1>{ p.Post.Title }</h1>
+				<div class="post-edit__meta">
+					<span class={ "status status--" + string(p.Post.Status) }>
+						{ string(p.Post.Status) }
+					</span>
+					<span class="post-edit__id">id: { p.Post.ID.String() }</span>
+				</div>
+			</div>
+
+			if p.Saved {
+				<div class="form-success">✓ Сохранено</div>
+			}
+			if p.Error != "" {
+				<div class="form-error">{ p.Error }</div>
+			}
+
+			<form
+				method="post"
+				action={ templ.URL("/ui/posts/" + p.Post.ID.String()) }
+				class="post-edit__form"
+			>
+				<label>
+					Title
+					<input type="text" name="title" value={ p.Post.Title } required/>
+				</label>
+				<label>
+					Status
+					<select name="status">
+						for _, s := range []string{"idea", "draft", "ready", "scheduled", "published", "failed"} {
+							<option value={ s } selected?={ string(p.Post.Status) == s }>{ s }</option>
+						}
+					</select>
+				</label>
+				<label>
+					Tags (comma-separated)
+					<input type="text" name="tags" value={ strings.Join(p.Post.Tags, ", ") }/>
+				</label>
+				<div class="post-edit__split">
+					<label class="post-edit__editor">
+						Content (Markdown)
+						<textarea
+							name="content"
+							rows="22"
+							hx-post="/ui/preview"
+							hx-trigger="input changed delay:400ms"
+							hx-target="#md-preview"
+							hx-swap="innerHTML"
+						>{ p.Post.Content }</textarea>
+					</label>
+					<div class="post-edit__preview">
+						<span class="post-edit__preview-label">Preview</span>
+						<div id="md-preview" class="md-preview">
+							@RenderedMarkdown(p.Post.Content)
+						</div>
+					</div>
+				</div>
+				<div class="post-edit__actions">
+					<button type="submit" class="btn">Save</button>
+					<a href="/ui/" class="post-edit__back">Cancel</a>
+				</div>
+			</form>
+		</div>
+	}
+}
+
+// RenderedMarkdown оборачивает HTML-партиал, отрендеренный из MD на сервере.
+// `html` приходит как уже-санитизированный HTML (см. webui/markdown.go),
+// поэтому используем templ.Raw без HTML-escape.
+templ RenderedMarkdown(rawMD string) {
+	@templ.Raw(MarkdownToHTML(rawMD))
+}

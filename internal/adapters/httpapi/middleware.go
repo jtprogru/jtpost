@@ -177,11 +177,14 @@ var csrfSkipPaths = map[string]struct{}{
 	"/ui/logout":       {},
 }
 
-// csrfSkipPrefixes — пути префикс-skip для CSRF (OAuth callback).
+// csrfSkipPrefixes — пути префикс-skip для CSRF.
+// /ui/ — server-rendered формы, защита через cookie SameSite=Lax (cross-site
+// POST блокируется браузером); JSON-API под /api/ остаётся под CSRF.
 //
 //nolint:gochecknoglobals
 var csrfSkipPrefixes = []string{
 	"/api/auth/oauth/",
+	"/ui/",
 }
 
 // CSRFMiddleware применяет double-submit-pattern для state-changing запросов

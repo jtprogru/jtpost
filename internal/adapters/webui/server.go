@@ -68,6 +68,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("/ui/", h.handleIndex)
 	h.mux.HandleFunc("/ui/posts", h.handlePostsPartial)
+	h.mux.HandleFunc("/ui/posts/", h.handlePostByID)
+	h.mux.HandleFunc("/ui/preview", h.handlePreview)
 	h.mux.HandleFunc("/ui/login", h.handleLogin)
 	h.mux.HandleFunc("/ui/logout", h.handleLogout)
 
