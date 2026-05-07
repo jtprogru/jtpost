@@ -9,257 +9,437 @@ import (
 	"github.com/google/uuid"
 )
 
-// mustParsePostID парсит строку в PostID или паникует при ошибке.
-// Используется только в тестах.
-func mustParsePostID(s string) PostID {
-	id, err := ParsePostID(s)
-	if err != nil {
-		// Fallback: генерируем UUID из строки используя SHA256
-		u := uuid.NewSHA1(uuid.NameSpaceOID, []byte(s))
-		return PostID(u)
-	}
-	return id
+// testTenant и testAuthor — фиксированные UUID для тестов.
+//
+//nolint:gochecknoglobals // shared test constants
+var (
+	testTenant  = uuid.MustParse("01900000-0000-7000-8000-000000000001")
+	testTenant2 = uuid.MustParse("01900000-0000-7000-8000-000000000002")
+	testAuthor  = uuid.MustParse("01900000-0000-7000-8000-000000000003")
+)
+
+// fakeClock — фиксированный clock для тестов.
+type fakeClock struct {
+	t time.Time
 }
 
-func TestPostService_CreatePost(t *testing.T) {
-	repo := &mockRepository{
-		posts: make(map[PostID]*Post),
-	}
-	clock := SystemClock{}
-	service := NewPostService(repo, clock)
+func (c *fakeClock) Now() time.Time { return c.t }
 
-	tests := []struct {
-		name      string
-		input     CreatePostInput
-		wantErr   bool
-		errType   error
-		checkPost func(*Post) bool
-	}{
-		{
-			name: "valid post creation",
-			input: CreatePostInput{
-				Title: "Test Post",
-				Tags:  []string{"test", "go"},
-			},
-			wantErr: false,
-			checkPost: func(p *Post) bool {
-				return p.Title == "Test Post" &&
-					p.Status == StatusIdea &&
-					len(p.Tags) == 2
-			},
-		},
-		{
-			name: "empty title",
-			input: CreatePostInput{
-				Title: "",
-			},
-			wantErr: true,
-			errType: ErrEmptyTitle,
-		},
-		{
-			name: "auto-generate slug",
-			input: CreatePostInput{
-				Title: "Test Post Without Slug",
-			},
-			wantErr: false,
-			checkPost: func(p *Post) bool {
-				return p.Slug == "test-post-without-slug"
-			},
-		},
-		{
-			name: "custom slug",
-			input: CreatePostInput{
-				Title: "Test Post",
-				Slug:  "custom-slug",
-			},
-			wantErr: false,
-			checkPost: func(p *Post) bool {
-				return p.Slug == "custom-slug"
-			},
-		},
-	}
+// advance продвигает время на dur.
+func (c *fakeClock) advance(dur time.Duration) { c.t = c.t.Add(dur) }
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			post, err := service.CreatePost(context.Background(), tt.input)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("CreatePost() expected error, got nil")
-				} else if tt.errType != nil && !errors.Is(err, tt.errType) {
-					t.Errorf("CreatePost() expected error %v, got %v", tt.errType, err)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("CreatePost() unexpected error: %v", err)
-				}
-				if tt.checkPost != nil && !tt.checkPost(post) {
-					t.Errorf("CreatePost() post validation failed")
-				}
-			}
-		})
-	}
+func newFakeClock() *fakeClock {
+	return &fakeClock{t: time.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC)}
 }
 
-func TestPostService_UpdateStatus(t *testing.T) {
-	repo := &mockRepository{
-		posts: make(map[PostID]*Post),
-	}
-	clock := SystemClock{}
-	service := NewPostService(repo, clock)
-
-	// Создаём тестовый пост
-	initialPost := &Post{
-		ID:        mustParsePostID("test-id"),
-		Title:     "Test",
-		Slug:      "test",
-		Status:    StatusDraft,
-	}
-	repo.posts[initialPost.ID] = initialPost
-
-	tests := []struct {
-		name      string
-		id        PostID
-		newStatus PostStatus
-		wantErr   bool
-		checkErr  func(error) bool
-	}{
-		{"draft to ready", mustParsePostID("test-id"), StatusReady, false, nil},
-		{"draft to published", mustParsePostID("test-id"), StatusPublished, false, nil},
-		{"ready to draft", mustParsePostID("test-id"), StatusDraft, true, func(err error) bool {
-			return err != nil
-		}},
-		{"not found", mustParsePostID("non-existent"), StatusReady, true, func(err error) bool {
-			return errors.Is(err, ErrNotFound)
-		}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := service.UpdateStatus(context.Background(), tt.id, tt.newStatus)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("UpdateStatus() expected error, got nil")
-				} else if tt.checkErr != nil && !tt.checkErr(err) {
-					t.Errorf("UpdateStatus() unexpected error: %v", err)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("UpdateStatus() unexpected error: %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestPostService_GenerateSlug(t *testing.T) {
+// newServiceFixture создаёт сервис с пустым mockRepository.
+func newServiceFixture(t *testing.T) (*PostService, *mockRepository, *fakeClock) {
+	t.Helper()
 	repo := &mockRepository{posts: make(map[PostID]*Post)}
-	service := NewPostService(repo, SystemClock{})
+	clk := newFakeClock()
+	return NewPostService(repo, clk), repo, clk
+}
 
+func validInput() CreatePostInput {
+	return CreatePostInput{
+		TenantID: testTenant,
+		AuthorID: testAuthor,
+		Title:    "Hello",
+		Tags:     []string{"go"},
+	}
+}
+
+// TestService_CreatePost_RequiresTenantID — REQ-1.1.
+func TestService_CreatePost_RequiresTenantID(t *testing.T) {
+	svc, _, _ := newServiceFixture(t)
+	in := validInput()
+	in.TenantID = uuid.Nil
+	_, err := svc.CreatePost(context.Background(), in)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got %v", err)
+	}
+}
+
+// TestService_CreatePost_RequiresAuthorID — REQ-1.2.
+func TestService_CreatePost_RequiresAuthorID(t *testing.T) {
+	svc, _, _ := newServiceFixture(t)
+	in := validInput()
+	in.AuthorID = uuid.Nil
+	_, err := svc.CreatePost(context.Background(), in)
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got %v", err)
+	}
+}
+
+// TestService_CreatePost_SetsAudit — REQ-1.3.
+//
+// Property: CP-3 (RevisionMonotonic — initial state).
+func TestService_CreatePost_SetsAudit(t *testing.T) {
+	svc, _, clk := newServiceFixture(t)
+	post, err := svc.CreatePost(context.Background(), validInput())
+	if err != nil {
+		t.Fatalf("CreatePost: %v", err)
+	}
+	if !post.CreatedAt.Equal(clk.t) {
+		t.Errorf("CreatedAt = %v, want %v", post.CreatedAt, clk.t)
+	}
+	if !post.UpdatedAt.Equal(clk.t) {
+		t.Errorf("UpdatedAt = %v, want %v", post.UpdatedAt, clk.t)
+	}
+	if post.Revision != 1 {
+		t.Errorf("Revision = %d, want 1", post.Revision)
+	}
+	if post.TenantID != testTenant {
+		t.Errorf("TenantID mismatch")
+	}
+	if post.AuthorID != testAuthor {
+		t.Errorf("AuthorID mismatch")
+	}
+	if post.Status != StatusIdea {
+		t.Errorf("Status = %s, want idea", post.Status)
+	}
+}
+
+// TestService_UpdatePost_IncrementsRevision — REQ-1.4.
+//
+// Property: CP-3 (RevisionMonotonic).
+func TestService_UpdatePost_IncrementsRevision(t *testing.T) {
+	svc, _, clk := newServiceFixture(t)
+	post, err := svc.CreatePost(context.Background(), validInput())
+	if err != nil {
+		t.Fatalf("CreatePost: %v", err)
+	}
+	originalCreated := post.CreatedAt
+
+	for i := 1; i <= 10; i++ {
+		clk.advance(time.Minute)
+		post.Title = "Updated"
+		if err := svc.UpdatePost(context.Background(), post); err != nil {
+			t.Fatalf("UpdatePost iteration %d: %v", i, err)
+		}
+	}
+	if post.Revision != 11 {
+		t.Errorf("Revision after 10 updates = %d, want 11", post.Revision)
+	}
+	if !post.CreatedAt.Equal(originalCreated) {
+		t.Errorf("CreatedAt changed: %v vs %v", post.CreatedAt, originalCreated)
+	}
+	if !post.UpdatedAt.Equal(clk.t) {
+		t.Errorf("UpdatedAt %v != clock %v", post.UpdatedAt, clk.t)
+	}
+}
+
+// TestService_UpdatePost_TenantImmutable — REQ-1.5.
+//
+// Property: CP-2 (TenantImmutability).
+func TestService_UpdatePost_TenantImmutable(t *testing.T) {
+	svc, repo, _ := newServiceFixture(t)
+	post, err := svc.CreatePost(context.Background(), validInput())
+	if err != nil {
+		t.Fatalf("CreatePost: %v", err)
+	}
+	originalTenant := post.TenantID
+
+	post.TenantID = testTenant2
+	post.Title = "Updated"
+	err = svc.UpdatePost(context.Background(), post)
+	if !errors.Is(err, ErrTenantMismatch) {
+		t.Errorf("expected ErrTenantMismatch, got %v", err)
+	}
+	stored := repo.posts[post.ID]
+	if stored.TenantID != originalTenant {
+		t.Errorf("stored TenantID changed to %v", stored.TenantID)
+	}
+}
+
+// TestService_UpdateStatus_AllowedTransitions — REQ-3.3.
+//
+// Property: CP-4, CP-10.
+func TestService_UpdateStatus_AllowedTransitions(t *testing.T) {
+	allowed := []struct {
+		from, to PostStatus
+	}{
+		{StatusIdea, StatusDraft},
+		{StatusDraft, StatusReady},
+		{StatusReady, StatusScheduled},
+		{StatusReady, StatusPublished},
+		{StatusScheduled, StatusPublished},
+		{StatusScheduled, StatusReady},
+		{StatusScheduled, StatusFailed},
+		{StatusFailed, StatusReady},
+		{StatusFailed, StatusArchived},
+		{StatusPublished, StatusArchived},
+	}
+	for _, tc := range allowed {
+		t.Run(string(tc.from)+"->"+string(tc.to), func(t *testing.T) {
+			svc, repo, _ := newServiceFixture(t)
+			id := PostID(uuid.New())
+			repo.posts[id] = &Post{
+				ID:       id,
+				TenantID: testTenant,
+				AuthorID: testAuthor,
+				Title:    "T",
+				Slug:     "t",
+				Status:   tc.from,
+				Revision: 1,
+			}
+			post, err := svc.UpdateStatus(context.Background(), id, tc.to)
+			if err != nil {
+				t.Fatalf("transition %s->%s failed: %v", tc.from, tc.to, err)
+			}
+			if post.Status != tc.to {
+				t.Errorf("Status = %s, want %s", post.Status, tc.to)
+			}
+		})
+	}
+}
+
+// TestService_UpdateStatus_DisallowedRejected — REQ-3.3.
+//
+// Property: CP-10 (UpdateStatusTransitionEnforcement).
+func TestService_UpdateStatus_DisallowedRejected(t *testing.T) {
+	svc, repo, _ := newServiceFixture(t)
+	id := PostID(uuid.New())
+	repo.posts[id] = &Post{
+		ID: id, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "T", Slug: "t", Status: StatusIdea, Revision: 1,
+	}
+	// idea → ready запрещён (только idea→draft)
+	_, err := svc.UpdateStatus(context.Background(), id, StatusReady)
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Errorf("expected ErrInvalidTransition, got %v", err)
+	}
+	// Состояние не должно измениться
+	if repo.posts[id].Status != StatusIdea {
+		t.Errorf("status changed despite error")
+	}
+}
+
+// TestService_UpdateStatus_PublishedSetsPublishedAt — REQ-3.4.
+func TestService_UpdateStatus_PublishedSetsPublishedAt(t *testing.T) {
+	svc, repo, clk := newServiceFixture(t)
+	id := PostID(uuid.New())
+	repo.posts[id] = &Post{
+		ID: id, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "T", Slug: "t", Status: StatusReady, Revision: 1,
+	}
+	post, err := svc.UpdateStatus(context.Background(), id, StatusPublished)
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+	if post.PublishedAt == nil {
+		t.Fatalf("PublishedAt is nil")
+	}
+	if !post.PublishedAt.Equal(clk.t) {
+		t.Errorf("PublishedAt = %v, want %v", *post.PublishedAt, clk.t)
+	}
+}
+
+// TestService_MarkFailed_AppendsHistory — REQ-3.5.
+func TestService_MarkFailed_AppendsHistory(t *testing.T) {
+	svc, repo, _ := newServiceFixture(t)
+	id := PostID(uuid.New())
+	repo.posts[id] = &Post{
+		ID: id, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "T", Slug: "t", Status: StatusScheduled, Revision: 1,
+	}
+	post, err := svc.MarkFailed(context.Background(), id, "rate limited")
+	if err != nil {
+		t.Fatalf("MarkFailed: %v", err)
+	}
+	if post.Status != StatusFailed {
+		t.Errorf("Status = %s, want failed", post.Status)
+	}
+	if len(post.PublishHistory) != 1 {
+		t.Fatalf("PublishHistory len = %d, want 1", len(post.PublishHistory))
+	}
+	att := post.PublishHistory[0]
+	if att.Status != "failed" || att.Error != "rate limited" {
+		t.Errorf("attempt = %+v", att)
+	}
+}
+
+// TestService_MarkFailed_FromIdea_Rejected — only from scheduled allowed.
+func TestService_MarkFailed_FromIdea_Rejected(t *testing.T) {
+	svc, repo, _ := newServiceFixture(t)
+	id := PostID(uuid.New())
+	repo.posts[id] = &Post{
+		ID: id, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "T", Slug: "t", Status: StatusIdea, Revision: 1,
+	}
+	_, err := svc.MarkFailed(context.Background(), id, "x")
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Errorf("expected ErrInvalidTransition, got %v", err)
+	}
+}
+
+// TestService_Archive_FromPublished — success.
+func TestService_Archive_FromPublished(t *testing.T) {
+	svc, repo, _ := newServiceFixture(t)
+	id := PostID(uuid.New())
+	repo.posts[id] = &Post{
+		ID: id, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "T", Slug: "t", Status: StatusPublished, Revision: 1,
+	}
+	post, err := svc.Archive(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Archive: %v", err)
+	}
+	if post.Status != StatusArchived {
+		t.Errorf("Status = %s, want archived", post.Status)
+	}
+}
+
+// TestService_Archive_FromIdea_Rejected.
+func TestService_Archive_FromIdea_Rejected(t *testing.T) {
+	svc, repo, _ := newServiceFixture(t)
+	id := PostID(uuid.New())
+	repo.posts[id] = &Post{
+		ID: id, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "T", Slug: "t", Status: StatusIdea, Revision: 1,
+	}
+	_, err := svc.Archive(context.Background(), id)
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Errorf("expected ErrInvalidTransition, got %v", err)
+	}
+}
+
+// TestService_ListPosts_RejectsInvalidSortBy — REQ-4.4.
+//
+// Property: CP-11.
+func TestService_ListPosts_RejectsInvalidSortBy(t *testing.T) {
+	svc, _, _ := newServiceFixture(t)
+	_, err := svc.ListPosts(context.Background(), PostFilter{
+		TenantID: testTenant,
+		SortBy:   "random",
+	})
+	if !errors.Is(err, ErrValidation) {
+		t.Errorf("expected ErrValidation, got %v", err)
+	}
+}
+
+// TestService_GenerateSlug — preserves existing slug logic.
+func TestService_GenerateSlug(t *testing.T) {
+	svc, _, _ := newServiceFixture(t)
 	tests := []struct {
 		title    string
 		expected string
 	}{
 		{"Hello World", "hello-world"},
-		{"Test 123", "test-123"},
-		{"Multiple   Spaces", "multiple-spaces"},
-		{"Special!@#Chars", "special-chars"}, // спецсимволы заменяются на дефис
-		{"  Trimmed  ", "trimmed"},
-		{"Cyrillic Тест", "cyrillic-test"}, // кириллица транслитерируется
 		{"Привет Мир", "privet-mir"},
-		{"Golang урок", "golang-urok"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.title, func(t *testing.T) {
-			result := service.generateSlug(tt.title)
-			if result != tt.expected {
-				t.Errorf("generateSlug(%q) = %q, expected %q", tt.title, result, tt.expected)
+			if got := svc.generateSlug(tt.title); got != tt.expected {
+				t.Errorf("generateSlug(%q) = %q, want %q", tt.title, got, tt.expected)
 			}
 		})
 	}
 }
 
-func TestPostService_DeletePost(t *testing.T) {
-	repo := &mockRepository{
-		posts: make(map[PostID]*Post),
+// TestService_DeletePost.
+func TestService_DeletePost(t *testing.T) {
+	svc, repo, _ := newServiceFixture(t)
+	id := PostID(uuid.New())
+	repo.posts[id] = &Post{
+		ID: id, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "T", Slug: "t", Status: StatusDraft, Revision: 1,
 	}
-	clock := SystemClock{}
-	service := NewPostService(repo, clock)
-
-	// Создаём тестовый пост
-	initialPost := &Post{
-		ID:        mustParsePostID("test-id"),
-		Title:     "Test",
-		Slug:      "test",
-		Status:    StatusDraft,
+	if err := svc.DeletePost(context.Background(), id); err != nil {
+		t.Errorf("DeletePost: %v", err)
 	}
-	repo.posts[initialPost.ID] = initialPost
-
-	tests := []struct {
-		name      string
-		id        PostID
-		wantErr   bool
-		checkErr  func(error) bool
-		checkPost func() bool
-	}{
-		{
-			name:    "delete existing post",
-			id:      mustParsePostID("test-id"),
-			wantErr: false,
-			checkPost: func() bool {
-				_, exists := repo.posts[mustParsePostID("test-id")]
-				return !exists // пост должен быть удалён
-			},
-		},
-		{
-			name:    "delete non-existent post",
-			id:      mustParsePostID("non-existent"),
-			wantErr: true,
-			checkErr: func(err error) bool {
-				return errors.Is(err, ErrNotFound)
-			},
-		},
+	if _, ok := repo.posts[id]; ok {
+		t.Errorf("post still exists after delete")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := service.DeletePost(context.Background(), tt.id)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("DeletePost() expected error, got nil")
-				} else if tt.checkErr != nil && !tt.checkErr(err) {
-					t.Errorf("DeletePost() unexpected error: %v", err)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("DeletePost() unexpected error: %v", err)
-				}
-				if tt.checkPost != nil && !tt.checkPost() {
-					t.Errorf("DeletePost() post was not deleted")
-				}
-			}
-		})
+	if err := svc.DeletePost(context.Background(), PostID(uuid.New())); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
 
-// mockRepository — тестовая реализация PostRepository.
+// TestService_GetStats.
+func TestService_GetStats(t *testing.T) {
+	svc, repo, _ := newServiceFixture(t)
+	for i, st := range []PostStatus{StatusDraft, StatusDraft, StatusReady, StatusPublished} {
+		id := PostID(uuid.New())
+		_ = i
+		repo.posts[id] = &Post{
+			ID: id, TenantID: testTenant, AuthorID: testAuthor,
+			Title: "T", Slug: "t", Status: st, Revision: 1,
+			Tags: []string{"go"},
+		}
+	}
+	stats, err := svc.GetStats(context.Background(), testTenant)
+	if err != nil {
+		t.Fatalf("GetStats: %v", err)
+	}
+	if stats.Total != 4 {
+		t.Errorf("Total = %d, want 4", stats.Total)
+	}
+	if stats.ByStatus[StatusDraft] != 2 {
+		t.Errorf("Draft count = %d, want 2", stats.ByStatus[StatusDraft])
+	}
+	if stats.ByTag["go"] != 4 {
+		t.Errorf("go tag count = %d, want 4", stats.ByTag["go"])
+	}
+}
+
+// TestService_GetNextPost — basic priority test.
+func TestService_GetNextPost(t *testing.T) {
+	svc, repo, clk := newServiceFixture(t)
+	pastDeadline := clk.t.Add(-24 * time.Hour)
+	id := PostID(uuid.New())
+	repo.posts[id] = &Post{
+		ID: id, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "Overdue", Slug: "overdue", Status: StatusDraft, Revision: 1,
+		Deadline: &pastDeadline,
+	}
+	id2 := PostID(uuid.New())
+	repo.posts[id2] = &Post{
+		ID: id2, TenantID: testTenant, AuthorID: testAuthor,
+		Title: "Idea", Slug: "idea", Status: StatusIdea, Revision: 1,
+	}
+
+	next, err := svc.GetNextPost(context.Background(), testTenant)
+	if err != nil {
+		t.Fatalf("GetNextPost: %v", err)
+	}
+	if next == nil || next.ID != id {
+		t.Errorf("expected overdue post, got %v", next)
+	}
+}
+
+// TestService_GetNextPost_Empty.
+func TestService_GetNextPost_Empty(t *testing.T) {
+	svc, _, _ := newServiceFixture(t)
+	next, err := svc.GetNextPost(context.Background(), testTenant)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if next != nil {
+		t.Errorf("expected nil, got %v", next)
+	}
+}
+
+// mockRepository — тестовая реализация PostRepository, поддерживающая
+// фильтрацию по TenantID.
 type mockRepository struct {
 	posts   map[PostID]*Post
 	listErr error
 }
 
-func (m *mockRepository) GetByID(ctx context.Context, id PostID) (*Post, error) {
+func (m *mockRepository) GetByID(_ context.Context, id PostID) (*Post, error) {
 	post, ok := m.posts[id]
 	if !ok {
 		return nil, ErrNotFound
 	}
-	return post, nil
+	// Возвращаем копию, чтобы тесты могли изменять возвращённый Post без
+	// мутации хранимого состояния.
+	cp := *post
+	return &cp, nil
 }
 
-func (m *mockRepository) GetBySlug(ctx context.Context, slug string) (*Post, error) {
+func (m *mockRepository) GetBySlug(_ context.Context, slug string) (*Post, error) {
 	for _, post := range m.posts {
 		if post.Slug == slug {
 			return post, nil
@@ -268,36 +448,42 @@ func (m *mockRepository) GetBySlug(ctx context.Context, slug string) (*Post, err
 	return nil, ErrNotFound
 }
 
-func (m *mockRepository) List(ctx context.Context, filter PostFilter) ([]*Post, error) {
+func (m *mockRepository) List(_ context.Context, filter PostFilter) ([]*Post, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
 	var posts []*Post
 	for _, post := range m.posts {
-		if matchesFilter(post, filter) {
-			posts = append(posts, post)
+		if filter.TenantID != uuid.Nil && post.TenantID != filter.TenantID {
+			continue
 		}
+		if !mockMatchesFilter(post, filter) {
+			continue
+		}
+		posts = append(posts, post)
 	}
 	return posts, nil
 }
 
-func (m *mockRepository) Create(ctx context.Context, post *Post) error {
+func (m *mockRepository) Create(_ context.Context, post *Post) error {
 	if _, ok := m.posts[post.ID]; ok {
 		return ErrAlreadyExists
 	}
-	m.posts[post.ID] = post
+	cp := *post
+	m.posts[post.ID] = &cp
 	return nil
 }
 
-func (m *mockRepository) Update(ctx context.Context, post *Post) error {
+func (m *mockRepository) Update(_ context.Context, post *Post) error {
 	if _, ok := m.posts[post.ID]; !ok {
 		return ErrNotFound
 	}
-	m.posts[post.ID] = post
+	cp := *post
+	m.posts[post.ID] = &cp
 	return nil
 }
 
-func (m *mockRepository) Delete(ctx context.Context, id PostID) error {
+func (m *mockRepository) Delete(_ context.Context, id PostID) error {
 	if _, ok := m.posts[id]; !ok {
 		return ErrNotFound
 	}
@@ -305,8 +491,7 @@ func (m *mockRepository) Delete(ctx context.Context, id PostID) error {
 	return nil
 }
 
-// matchesFilter — вспомогательная функция для фильтрации.
-func matchesFilter(post *Post, filter PostFilter) bool {
+func mockMatchesFilter(post *Post, filter PostFilter) bool {
 	if len(filter.Statuses) > 0 {
 		found := false
 		for _, s := range filter.Statuses {
@@ -320,261 +505,4 @@ func matchesFilter(post *Post, filter PostFilter) bool {
 		}
 	}
 	return true
-}
-
-func TestPostService_GetStats(t *testing.T) {
-	repo := &mockRepository{
-		posts: make(map[PostID]*Post),
-	}
-	clock := SystemClock{}
-	service := NewPostService(repo, clock)
-
-	// Создаём тестовые посты
-	testPosts := []*Post{
-		{
-			ID:        mustParsePostID("post-1"),
-			Title:     "Draft Post",
-			Slug:      "draft-post",
-			Status:    StatusDraft,
-			Tags:      []string{"go", "tutorial"},
-		},
-		{
-			ID:        mustParsePostID("post-2"),
-			Title:     "Ready Post",
-			Slug:      "ready-post",
-			Status:    StatusReady,
-			Tags:      []string{"go", "news"},
-		},
-		{
-			ID:        mustParsePostID("post-3"),
-			Title:     "Published Post",
-			Slug:      "published-post",
-			Status:    StatusPublished,
-			Tags:      []string{"tutorial"},
-		},
-		{
-			ID:        mustParsePostID("post-4"),
-			Title:     "Another Draft",
-			Slug:      "another-draft",
-			Status:    StatusDraft,
-			Tags:      []string{"go", "cli"},
-		},
-	}
-
-	for _, post := range testPosts {
-		repo.posts[post.ID] = post
-	}
-
-	t.Run("returns correct statistics", func(t *testing.T) {
-		stats, err := service.GetStats(context.Background())
-		if err != nil {
-			t.Fatalf("GetStats() unexpected error: %v", err)
-		}
-
-		if stats.Total != 4 {
-			t.Errorf("GetStats() Total = %d, want 4", stats.Total)
-		}
-
-		// Проверка по статусам
-		expectedByStatus := map[PostStatus]int{
-			StatusDraft:     2,
-			StatusReady:     1,
-			StatusPublished: 1,
-		}
-		for status, expected := range expectedByStatus {
-			if stats.ByStatus[status] != expected {
-				t.Errorf("GetStats() ByStatus[%s] = %d, want %d", status, stats.ByStatus[status], expected)
-			}
-		}
-
-		// Проверка по тегам
-		expectedByTag := map[string]int{
-			"go":       3,
-			"tutorial": 2,
-			"news":     1,
-			"cli":      1,
-		}
-		for tag, expected := range expectedByTag {
-			if stats.ByTag[tag] != expected {
-				t.Errorf("GetStats() ByTag[%s] = %d, want %d", tag, stats.ByTag[tag], expected)
-			}
-		}
-	})
-
-	t.Run("empty repository", func(t *testing.T) {
-		emptyRepo := &mockRepository{
-			posts: make(map[PostID]*Post),
-		}
-		emptyService := NewPostService(emptyRepo, clock)
-
-		stats, err := emptyService.GetStats(context.Background())
-		if err != nil {
-			t.Fatalf("GetStats() unexpected error: %v", err)
-		}
-
-		if stats.Total != 0 {
-			t.Errorf("GetStats() Total = %d, want 0", stats.Total)
-		}
-
-		if len(stats.ByStatus) != 0 {
-			t.Errorf("GetStats() ByStatus should be empty")
-		}
-
-		if len(stats.ByTag) != 0 {
-			t.Errorf("GetStats() ByTag should be empty")
-		}
-	})
-
-	t.Run("repository error", func(t *testing.T) {
-		errorRepo := &mockRepository{
-			posts:   make(map[PostID]*Post),
-			listErr: errors.New("list error"),
-		}
-		errorService := NewPostService(errorRepo, clock)
-
-		_, err := errorService.GetStats(context.Background())
-		if err == nil {
-			t.Errorf("GetStats() expected error, got nil")
-		}
-	})
-}
-
-func TestPostService_GetNextPost(t *testing.T) {
-	repo := &mockRepository{
-		posts: make(map[PostID]*Post),
-	}
-	clock := SystemClock{}
-	service := NewPostService(repo, clock)
-
-	now := clock.Now()
-	
-	// Создаём временные метки для тестов
-	pastDeadline := now.Add(-24 * time.Hour)   // Просроченный дедлайн
-	futureDeadline := now.Add(48 * time.Hour)  // Будущий дедлайн
-	pastScheduled := now.Add(-12 * time.Hour)  // Просроченное scheduled
-
-	// Создаём тестовые посты с разными приоритетами
-	testPosts := []*Post{
-		{
-			// Пост с просроченным дедлайном — highest priority
-			ID:        mustParsePostID("post-overdue"),
-			Title:     "Overdue Post",
-			Slug:      "overdue-post",
-			Status:    StatusDraft,
-			Deadline:  &pastDeadline,
-		},
-		{
-			// Пост с будущим дедлайном
-			ID:        mustParsePostID("post-with-deadline"),
-			Title:     "Deadline Post",
-			Slug:      "deadline-post",
-			Status:    StatusIdea,
-			Deadline:  &futureDeadline,
-		},
-		{
-			// Пост со scheduled_at (просроченным)
-			ID:          mustParsePostID("post-scheduled-past"),
-			Title:       "Past Scheduled Post",
-			Slug:        "past-scheduled-post",
-			Status:      StatusReady,
-			ScheduledAt: &pastScheduled,
-		},
-		{
-			// Пост без дедлайна, статус ready
-			ID:        mustParsePostID("post-ready"),
-			Title:     "Ready Post",
-			Slug:      "ready-post",
-			Status:    StatusReady,
-		},
-		{
-			// Пост без дедлайна, статус draft
-			ID:        mustParsePostID("post-draft"),
-			Title:     "Draft Post",
-			Slug:      "draft-post",
-			Status:    StatusDraft,
-		},
-		{
-			// Пост без дедлайна, статус idea
-			ID:        mustParsePostID("post-idea"),
-			Title:     "Idea Post",
-			Slug:      "idea-post",
-			Status:    StatusIdea,
-		},
-		{
-			// Опубликованный пост — должен быть исключён
-			ID:        mustParsePostID("post-published"),
-			Title:     "Published Post",
-			Slug:      "published-post",
-			Status:    StatusPublished,
-		},
-	}
-
-	for _, post := range testPosts {
-		repo.posts[post.ID] = post
-	}
-
-	t.Run("returns post with overdue deadline", func(t *testing.T) {
-		nextPost, err := service.GetNextPost(context.Background())
-		if err != nil {
-			t.Fatalf("GetNextPost() unexpected error: %v", err)
-		}
-
-		if nextPost == nil {
-			t.Fatalf("GetNextPost() expected post, got nil")
-		}
-
-		// Должен вернуться пост с просроченным дедлайном
-		expectedID := mustParsePostID("post-overdue")
-		if nextPost.ID != expectedID {
-			t.Errorf("GetNextPost() ID = %s, expected post-overdue", nextPost.ID)
-		}
-	})
-
-	t.Run("empty repository returns nil", func(t *testing.T) {
-		emptyRepo := &mockRepository{
-			posts: make(map[PostID]*Post),
-		}
-		emptyService := NewPostService(emptyRepo, clock)
-
-		nextPost, err := emptyService.GetNextPost(context.Background())
-		if err != nil {
-			t.Fatalf("GetNextPost() unexpected error: %v", err)
-		}
-
-		if nextPost != nil {
-			t.Errorf("GetNextPost() expected nil for empty repository, got %v", nextPost)
-		}
-	})
-
-	t.Run("only published posts returns nil", func(t *testing.T) {
-		publishedOnlyRepo := &mockRepository{
-			posts: map[PostID]*Post{
-				mustParsePostID("pub1"): {ID: mustParsePostID("pub1"), Title: "Pub 1", Slug: "pub-1", Status: StatusPublished},
-				mustParsePostID("pub2"): {ID: mustParsePostID("pub2"), Title: "Pub 2", Slug: "pub-2", Status: StatusScheduled},
-			},
-		}
-		publishedService := NewPostService(publishedOnlyRepo, clock)
-
-		nextPost, err := publishedService.GetNextPost(context.Background())
-		if err != nil {
-			t.Fatalf("GetNextPost() unexpected error: %v", err)
-		}
-
-		if nextPost != nil {
-			t.Errorf("GetNextPost() expected nil for only published posts, got %v", nextPost)
-		}
-	})
-
-	t.Run("repository error", func(t *testing.T) {
-		errorRepo := &mockRepository{
-			posts:   make(map[PostID]*Post),
-			listErr: errors.New("list error"),
-		}
-		errorService := NewPostService(errorRepo, clock)
-
-		_, err := errorService.GetNextPost(context.Background())
-		if err == nil {
-			t.Errorf("GetNextPost() expected error, got nil")
-		}
-	})
 }

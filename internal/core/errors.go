@@ -6,6 +6,9 @@ import "errors"
 var (
 	ErrNotFound      = errors.New("post not found")
 	ErrAlreadyExists = errors.New("post already exists")
+	// ErrTenantMismatch возвращается при попытке изменить TenantID существующего
+	// поста или при операции записи с несовпадением tenant scope.
+	ErrTenantMismatch = errors.New("tenant mismatch")
 )
 
 // Ошибки валидации.
@@ -13,36 +16,32 @@ var (
 	ErrEmptyTitle    = errors.New("title cannot be empty")
 	ErrEmptySlug     = errors.New("slug cannot be empty")
 	ErrInvalidStatus = errors.New("invalid status transition")
-	ErrValidation    = errors.New("validation error")
+	// ErrInvalidTransition возвращается, когда переход между статусами не разрешён
+	// согласно allowedTransitions. Отделена от ErrInvalidStatus, которая
+	// сигнализирует о неизвестном значении статуса в принципе.
+	ErrInvalidTransition = errors.New("invalid status transition")
+	ErrValidation        = errors.New("validation error")
 )
 
 // Ошибки публикации.
 var (
 	ErrPublishFailed     = errors.New("failed to publish")
 	ErrNotReadyToPublish = errors.New("post is not ready to publish")
+	// ErrPublishRetryExhausted возвращается worker'ом после исчерпания всех
+	// попыток публикации.
+	ErrPublishRetryExhausted = errors.New("publish retry attempts exhausted")
 )
 
 // Ошибки конфигурации.
 var (
-	ErrConfigNotFound    = errors.New("config file not found")
-	ErrConfigInvalid     = errors.New("config file is invalid")
-	ErrPostsDirNotFound  = errors.New("posts directory not found")
+	ErrConfigNotFound   = errors.New("config file not found")
+	ErrConfigInvalid    = errors.New("config file is invalid")
+	ErrPostsDirNotFound = errors.New("posts directory not found")
 )
 
 // IsStatusTransitionValid проверяет допустимость перехода между статусами.
+//
+// Deprecated: используйте IsTransitionAllowed.
 func IsStatusTransitionValid(from, to PostStatus) bool {
-	statusIndex := make(map[PostStatus]int)
-	for i, s := range StatusOrder {
-		statusIndex[s] = i
-	}
-
-	fromIdx, fromOk := statusIndex[from]
-	toIdx, toOk := statusIndex[to]
-
-	if !fromOk || !toOk {
-		return false
-	}
-
-	// Можно переходить только вперёд по статусам
-	return toIdx > fromIdx
+	return IsTransitionAllowed(from, to)
 }
