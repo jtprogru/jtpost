@@ -339,8 +339,14 @@ linters:
       - path: internal/core/worker\.go
         linters:
           - contextcheck
-      # httptest.NewRequest в тестах httpapi — допустимо
+      - path: internal/adapters/webui/.*\.go
+        linters:
+          - contextcheck
+      # httptest.NewRequest в тестах httpapi/webui — допустимо
       - path: internal/adapters/httpapi/.*_test\.go
+        linters:
+          - noctx
+      - path: internal/adapters/webui/.*_test\.go
         linters:
           - noctx
       # write() намеренно объявлен до публичных методов

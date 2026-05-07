@@ -1,0 +1,84 @@
+package components
+
+import (
+	"strings"
+
+	"github.com/jtprogru/jtpost/internal/core"
+)
+
+// DashboardProps — данные для рендера dashboard.
+type DashboardProps struct {
+	Posts  []*core.Post
+	Search string
+	Status string
+}
+
+templ Dashboard(p DashboardProps) {
+	@Layout("Posts", "dashboard") {
+		<h1>Posts</h1>
+		@dashboardToolbar(p)
+		<div id="posts-table">
+			@PostsTable(p.Posts)
+		</div>
+	}
+}
+
+templ dashboardToolbar(p DashboardProps) {
+	<form
+		class="toolbar"
+		hx-get="/ui/posts"
+		hx-target="#posts-table"
+		hx-trigger="input changed delay:300ms from:input, change from:select, submit"
+		hx-swap="innerHTML"
+	>
+		<input
+			type="text"
+			name="search"
+			placeholder="Поиск по title/slug..."
+			value={ p.Search }
+			autocomplete="off"
+		/>
+		<select name="status">
+			<option value="" selected?={ p.Status == "" }>Все статусы</option>
+			for _, s := range []string{"idea", "draft", "ready", "scheduled", "published", "failed"} {
+				<option value={ s } selected?={ p.Status == s }>{ s }</option>
+			}
+		</select>
+		<span class="htmx-indicator">⏳</span>
+		<a href="/ui/posts/new" class="btn">+ New</a>
+	</form>
+}
+
+// PostsTable — отдельный компонент: htmx обновляет только эту часть.
+templ PostsTable(posts []*core.Post) {
+	if len(posts) == 0 {
+		<div class="empty">Нет постов по фильтрам.</div>
+	} else {
+		<table class="posts-table">
+			<thead>
+				<tr>
+					<th>Title</th>
+					<th>Status</th>
+					<th>Tags</th>
+					<th>Updated</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, post := range posts {
+					<tr>
+						<td>
+							<a href={ templ.URL("/ui/posts/" + post.ID.String()) }>{ post.Title }</a>
+						</td>
+						<td>
+							<span class={ "status status--" + string(post.Status) }>
+								{ string(post.Status) }
+							</span>
+						</td>
+						<td>{ strings.Join(post.Tags, ", ") }</td>
+						<td>{ post.UpdatedAt.Format("2006-01-02 15:04") }</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	}
+}

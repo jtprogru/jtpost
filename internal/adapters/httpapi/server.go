@@ -27,6 +27,7 @@ type Server struct {
 	auditSvc  *core.AuditService    // nil if storage не поддерживает audit (fs)
 	auditRepo core.AuditRepository  // nil if storage не поддерживает audit; нужен для read-API
 	outbox    core.OutboxRepository
+	ui        http.Handler // optional: mounted under /ui/
 	mux       *http.ServeMux
 	log       *logger.Logger
 	cfg       *config.Config
@@ -41,6 +42,7 @@ type ServerConfig struct {
 	AuditService *core.AuditService
 	AuditRepo    core.AuditRepository
 	Outbox       core.OutboxRepository
+	UI           http.Handler // optional, mounted under /ui/
 	Logger       *logger.Logger
 	Config       *config.Config
 }
@@ -69,6 +71,7 @@ func NewServerWithConfig(cfg ServerConfig) *Server {
 		auditSvc:  cfg.AuditService,
 		auditRepo: cfg.AuditRepo,
 		outbox:    cfg.Outbox,
+		ui:        cfg.UI,
 		mux:       http.NewServeMux(),
 		log:       log,
 		cfg:       cfg.Config,
@@ -118,6 +121,10 @@ func (s *Server) registerRoutes() {
 	if s.oauthSvc != nil && s.authSvc != nil && s.cfg != nil {
 		oauthHandler := NewOAuthHandler(s.oauthSvc, s.authSvc, s.auditSvc, s.cfg)
 		s.bothPrefixes("/api/auth/oauth/", oauthHandler)
+	}
+	if s.ui != nil {
+		// UI применяет TenantFromConfig, чтобы posts list уважал scope.
+		s.mux.Handle("/ui/", s.apply(s.ui.ServeHTTP))
 	}
 	s.mux.HandleFunc("/", s.handleIndex)
 }

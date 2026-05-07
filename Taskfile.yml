@@ -81,16 +81,22 @@ tasks:
 
   # === Кодогенерация и миграции ===
   generate:
-    desc: Полная кодогенерация (sqlc + oapi-codegen types + oapi-codegen client)
+    desc: Полная кодогенерация (sqlc + oapi-codegen types + oapi-codegen client + templ)
     cmds:
       - task: generate:sqlc
       - task: generate:openapi:types
       - task: generate:openapi:client
+      - task: generate:templ
 
   generate:sqlc:
     desc: sqlc для SQLite и Postgres адаптеров
     cmds:
       - "sqlc generate"
+
+  generate:templ:
+    desc: templ — генерация Go из *.templ для Web UI v2 (B.4)
+    cmds:
+      - "go run github.com/a-h/templ/cmd/templ generate ./internal/adapters/webui/..."
 
   generate:openapi:
     desc: Alias — types + client (F5+F5b)

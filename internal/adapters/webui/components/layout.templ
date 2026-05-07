@@ -1,0 +1,55 @@
+package components
+
+// Layout — базовый HTML wrapper. children — содержимое <main>.
+templ Layout(title string, activeNav string) {
+	<!DOCTYPE html>
+	<html lang="ru">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } — jtpost</title>
+			<link rel="stylesheet" href="/ui/static/app.css"/>
+			<script src="/ui/static/htmx.min.js" defer></script>
+			<script>
+				// Theme: persisted в localStorage; toggle применяет data-theme.
+				(function() {
+					const saved = localStorage.getItem('jtpost-theme');
+					if (saved) document.documentElement.setAttribute('data-theme', saved);
+				})();
+			</script>
+		</head>
+		<body>
+			@nav(activeNav)
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+templ nav(active string) {
+	<nav class="nav">
+		<a href="/ui/" class="nav__brand">📝 jtpost</a>
+		<div class="nav__links">
+			<a href="/ui/" class={ navLinkClass(active, "dashboard") }>Posts</a>
+			<a href="/ui/plan" class={ navLinkClass(active, "plan") }>Plan</a>
+			<a href="/ui/audit" class={ navLinkClass(active, "audit") }>Audit</a>
+			<button class="theme-toggle" onclick="toggleTheme()">🌓</button>
+		</div>
+	</nav>
+	<script>
+		function toggleTheme() {
+			const cur = document.documentElement.getAttribute('data-theme') || 'light';
+			const next = cur === 'dark' ? 'light' : 'dark';
+			document.documentElement.setAttribute('data-theme', next);
+			localStorage.setItem('jtpost-theme', next);
+		}
+	</script>
+}
+
+func navLinkClass(active, name string) string {
+	if active == name {
+		return "active"
+	}
+	return ""
+}

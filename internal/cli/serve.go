@@ -12,6 +12,7 @@ import (
 	"github.com/jtprogru/jtpost/internal/adapters/httpapi"
 	"github.com/jtprogru/jtpost/internal/adapters/storage"
 	"github.com/jtprogru/jtpost/internal/adapters/telegram"
+	"github.com/jtprogru/jtpost/internal/adapters/webui"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/jtprogru/jtpost/internal/logger"
 	"github.com/spf13/cobra"
@@ -90,6 +91,9 @@ var serveCmd = &cobra.Command{
 			auditSvc = core.NewAuditService(bundle.AuditLog, core.SystemClock{})
 		}
 
+		// Web UI v2 (htmx + templ).
+		ui := webui.NewHandler(service, log)
+
 		// Создаём HTTP сервер с логгером
 		serverCfg := httpapi.ServerConfig{
 			Service:      service,
@@ -99,6 +103,7 @@ var serveCmd = &cobra.Command{
 			AuditService: auditSvc,
 			AuditRepo:    bundle.AuditLog,
 			Outbox:       bundle.Outbox,
+			UI:           ui,
 			Logger:       log,
 			Config:       cfg,
 		}
