@@ -1,0 +1,97 @@
+package components
+
+import (
+	"time"
+
+	"github.com/jtprogru/jtpost/internal/core"
+)
+
+// PlanItem — пост, запланированный к публикации.
+type PlanItem struct {
+	Post     *core.Post
+	Date     time.Time
+	DateType string // "schedule" или "deadline"
+}
+
+// PlanGroup — группа постов на одну дату.
+type PlanGroup struct {
+	Date  time.Time
+	Items []PlanItem
+}
+
+// PlanProps — данные для plan page.
+type PlanProps struct {
+	Groups    []PlanGroup
+	Days      int
+	UserEmail string
+}
+
+templ Plan(p PlanProps) {
+	@Layout(LayoutProps{Title: "Plan", ActiveNav: "plan", UserEmail: p.UserEmail}) {
+		<h1>Plan на { itoa(p.Days) } дней</h1>
+		<form class="toolbar" method="get" action="/ui/plan">
+			<label>
+				Дней:
+				<input type="number" name="days" value={ itoa(p.Days) } min="1" max="365"/>
+			</label>
+			<button type="submit" class="btn">Применить</button>
+		</form>
+		if len(p.Groups) == 0 {
+			<div class="empty">Нет запланированных постов на { itoa(p.Days) } дней.</div>
+		} else {
+			<div class="plan">
+				for _, g := range p.Groups {
+					@planGroup(g)
+				}
+			</div>
+		}
+	}
+}
+
+templ planGroup(g PlanGroup) {
+	<section class="plan__group">
+		<h2 class="plan__date">{ g.Date.Format("Mon, 02 Jan 2006") }</h2>
+		<ul class="plan__list">
+			for _, it := range g.Items {
+				<li class="plan__item">
+					<a href={ templ.URL("/ui/posts/" + it.Post.ID.String()) } class="plan__title">
+						{ it.Post.Title }
+					</a>
+					<span class={ "status status--" + string(it.Post.Status) }>
+						{ string(it.Post.Status) }
+					</span>
+					<span class="plan__type">
+						if it.DateType == "schedule" {
+							📅 scheduled
+						} else {
+							⏰ deadline
+						}
+					</span>
+				</li>
+			}
+		</ul>
+	</section>
+}
+
+// itoa — int → string без strconv import (templ-friendly).
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
+}
