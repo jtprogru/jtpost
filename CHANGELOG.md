@@ -7,6 +7,31 @@
 
 ## [Неопубликовано]
 
+### F3: Git-storage decorator — auto-commit/push поверх FS-репозитория
+
+**Добавлено:**
+- **Новый пакет `internal/adapters/gitrepo`** — Decorator-обёртка над `core.PostRepository` через pure-Go `github.com/go-git/go-git/v5`. После успешных Create/Update/Delete делает `git add` + `git commit`; при `auto_push=true` — `git push` с timeout 30s.
+- **Auto-init**: если `posts_dir` не git-репо, `NewGitDecorator` автоматически инициализирует репозиторий (`git init` с `cfg.Branch`, default `main`).
+- **Stale-lock detection**: `.git/index.lock` старше 60 секунд автоматически удаляется при `Open()` (защита от crashed previous process).
+- **Detached HEAD detection**: при detached state логируется warning, мутирующие операции возвращают success без коммитов (не падать на пользовательской ошибке).
+- **Commit-template** через `text/template`: переменные `.Slug`, `.Title`, `.ID`, `.Status`, `.Operation` (`create`/`update`/`delete`), `.Time` (UTC). Default — `"chore: {{.Operation}} post {{.Slug}}"`. Невалидный шаблон отклоняется в `Config.Validate()` и `NewGitDecorator()`.
+- **Author identity**: env `GIT_AUTHOR_NAME`/`GIT_AUTHOR_EMAIL` → fallback `jtpost <bot@jtpost.local>`.
+- **Auth для push**: `GIT_HTTPS_TOKEN` env-token для HTTPS-remotes, ssh-agent для SSH-remotes.
+- **Concurrency-safe**: per-decorator `sync.Mutex` сериализует git-операции; cross-process safety через `.git/index.lock` от go-git.
+- **Soft-fail на push**: failed push не блокирует мутирующую операцию (commit локально есть, push можно повторить).
+- **Storage factory wiring**: `storage.Open(cfg)` при `Storage.Type=fs && Storage.Git.Enabled=true` автоматически оборачивает fs-репо в `gitrepo.GitDecorator`. SQL-backend (sqlite/postgres) git-decorator не применяется.
+- **Doctor extension**: `jtpost doctor` для `fs+git` режима добавляет check `Git` (clean/dirty/файлы) и `Git remote` (origin URL match с config); пароли в URL маскируются через `maskDSN`.
+- **`Config.Validate()` extension**: `Storage.Git.Enabled=true && AutoPush=true && Remote==""` → `ErrConfigInvalid`. Невалидный `CommitTemplate` → `ErrConfigInvalid`. Empty `Branch` falls-back на `"main"`.
+- **`ImportPosts` batch-commit**: один git-commit на N постов (вместо N коммитов).
+- **Default `CommitTemplate`** в `NewDefaultConfig` обновлён на `"chore: {{.Operation}} post {{.Slug}}"` (использует операционную семантику вместо хардкода "update").
+- **Зависимости**: `github.com/go-git/go-git/v5` v5.13+ (pure-Go, CGO_ENABLED=0 совместим).
+- **Тесты**: 19 unit-тестов в `gitrepo` + 18 RunContract subtests + 2 push-теста через bare-tempdir-remote (file://) + 3 doctor-теста (clean/dirty/not-a-repo).
+
+**Migration path:**
+1. Включить `storage.git.enabled: true` в `.jtpost.yaml`.
+2. (Опц.) задать `storage.git.remote` и установить `GIT_HTTPS_TOKEN` или ssh-agent для `auto_push`.
+3. При первом `jtpost new` — `posts_dir` авто-инициализируется как git-репо, первый commit делается.
+
 ### F2: Storage parity — SQLite + Postgres адаптеры с полным F1-контрактом
 
 **Breaking changes:**

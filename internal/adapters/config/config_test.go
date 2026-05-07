@@ -574,6 +574,87 @@ func TestConfig_Validate_StorageDSN(t *testing.T) {
 	}
 }
 
+func TestConfig_Validate_GitSection(t *testing.T) {
+	tenant, author := validUUIDs(t)
+	tt := []struct {
+		name       string
+		mutate     func(*Config)
+		wantErr    bool
+		wantBranch string
+	}{
+		{
+			name: "git_disabled_no_validation",
+			mutate: func(c *Config) {
+				c.Storage.Git.Enabled = false
+				c.Storage.Git.AutoPush = true
+				c.Storage.Git.Remote = ""
+			},
+			wantErr: false,
+		},
+		{
+			name: "autopush_no_remote_fails",
+			mutate: func(c *Config) {
+				c.Storage.Git.Enabled = true
+				c.Storage.Git.AutoPush = true
+				c.Storage.Git.Remote = ""
+			},
+			wantErr: true,
+		},
+		{
+			name: "autopush_with_remote_ok",
+			mutate: func(c *Config) {
+				c.Storage.Git.Enabled = true
+				c.Storage.Git.AutoPush = true
+				c.Storage.Git.Remote = "git@github.com:u/r.git"
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid_template_fails",
+			mutate: func(c *Config) {
+				c.Storage.Git.Enabled = true
+				c.Storage.Git.CommitTemplate = "{{.Slug"
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty_template_ok",
+			mutate: func(c *Config) {
+				c.Storage.Git.Enabled = true
+				c.Storage.Git.CommitTemplate = ""
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty_branch_falls_back_to_main",
+			mutate: func(c *Config) {
+				c.Storage.Git.Enabled = true
+				c.Storage.Git.Branch = ""
+			},
+			wantErr:    false,
+			wantBranch: "main",
+		},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := NewDefaultConfig()
+			cfg.Auth.TenantDefault = tenant
+			cfg.Auth.AuthorDefault = author
+			tc.mutate(cfg)
+			err := cfg.Validate()
+			if tc.wantErr && !errors.Is(err, core.ErrConfigInvalid) {
+				t.Fatalf("want ErrConfigInvalid, got %v", err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("want nil, got %v", err)
+			}
+			if tc.wantBranch != "" && cfg.Storage.Git.Branch != tc.wantBranch {
+				t.Errorf("Branch=%q, want %q", cfg.Storage.Git.Branch, tc.wantBranch)
+			}
+		})
+	}
+}
+
 func TestConfig_SQLiteDSN_Priority(t *testing.T) {
 	cfg := &Config{}
 	cfg.Storage.SQLite.DSN = "/from/storage.db"

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/telegram"
 	"github.com/jtprogru/jtpost/internal/core"
@@ -59,6 +60,9 @@ func runDoctor(ctx context.Context, out io.Writer, configPath string) error {
 	if cfg != nil {
 		results = append(results, checkPostsDir(cfg.PostsDir))
 		results = append(results, checkStorage(ctx, cfg))
+		if cfg.Storage.Type == "fs" && cfg.Storage.Git.Enabled {
+			results = append(results, checkGitRepo(cfg)...)
+		}
 		results = append(results, checkTelegram(ctx, cfg.Telegram))
 		results = append(results, checkEditor())
 	}
@@ -218,6 +222,68 @@ func checkTelegram(ctx context.Context, tg config.TelegramConfig) checkResult {
 		return checkResult{level: levelFail, name: "Telegram", message: fmt.Sprintf("getMe: %v", err)}
 	}
 	return checkResult{level: levelOK, name: "Telegram", message: fmt.Sprintf("бот @%s (id=%d)", info.Username, info.ID)}
+}
+
+// checkGitRepo проверяет состояние git-репозитория в posts_dir, когда
+// storage.git.enabled=true. Возвращает 1-2 checkResult: статус репо
+// и (если задан Remote) совпадение конфигурации remote.
+func checkGitRepo(cfg *config.Config) []checkResult {
+	results := []checkResult{}
+	repo, err := git.PlainOpen(cfg.PostsDir)
+	if err != nil {
+		return []checkResult{{
+			level:   levelFail,
+			name:    "Git",
+			message: fmt.Sprintf("не git-репозиторий (%s): %v", cfg.PostsDir, err),
+		}}
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		return []checkResult{{level: levelFail, name: "Git", message: fmt.Sprintf("worktree: %v", err)}}
+	}
+	st, err := wt.Status()
+	if err != nil {
+		return []checkResult{{level: levelFail, name: "Git", message: fmt.Sprintf("status: %v", err)}}
+	}
+	if st.IsClean() {
+		results = append(results, checkResult{level: levelOK, name: "Git", message: "clean"})
+	} else {
+		results = append(results, checkResult{
+			level:   levelWarn,
+			name:    "Git",
+			message: fmt.Sprintf("dirty (%d файл(ов) изменены)", len(st)),
+		})
+	}
+	if cfg.Storage.Git.Remote != "" {
+		remote, err := repo.Remote("origin")
+		if err != nil {
+			results = append(results, checkResult{
+				level:   levelWarn,
+				name:    "Git remote",
+				message: "origin не настроен",
+			})
+		} else {
+			actual := ""
+			if urls := remote.Config().URLs; len(urls) > 0 {
+				actual = urls[0]
+			}
+			masked := maskDSN(actual)
+			if actual != cfg.Storage.Git.Remote {
+				results = append(results, checkResult{
+					level:   levelWarn,
+					name:    "Git remote",
+					message: fmt.Sprintf("URL mismatch: %s != %s", masked, maskDSN(cfg.Storage.Git.Remote)),
+				})
+			} else {
+				results = append(results, checkResult{
+					level:   levelOK,
+					name:    "Git remote",
+					message: fmt.Sprintf("origin → %s", masked),
+				})
+			}
+		}
+	}
+	return results
 }
 
 func checkEditor() checkResult {

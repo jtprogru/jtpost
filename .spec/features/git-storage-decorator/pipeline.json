@@ -1,0 +1,21 @@
+{
+  "feature": "git-storage-decorator",
+  "phase": "done",
+  "created_at": "2026-05-07T07:40:32Z",
+  "current_artifact": null,
+  "history": [
+    {"phase": "explore", "artifact": ".spec/features/git-storage-decorator/explore.md", "approved_at": "2026-05-07T07:43:36Z"},
+    {"phase": "requirements", "artifact": ".spec/features/git-storage-decorator/requirements.md", "approved_at": "2026-05-07T07:45:07Z"},
+    {"phase": "design", "artifact": ".spec/features/git-storage-decorator/design.md", "approved_at": "2026-05-07T07:48:24Z"},
+    {"phase": "task-plan", "artifact": ".spec/features/git-storage-decorator/task-plan.md", "approved_at": "2026-05-07T07:50:34Z"},
+    {"phase": "implementation", "artifact": ".spec/features/git-storage-decorator/implementation.md", "approved_at": "2026-05-07T08:06:08Z"},
+    {"phase": "review", "artifact": ".spec/features/git-storage-decorator/review.md", "approved_at": "2026-05-07T08:08:56Z"}
+  ],
+  "review_base_commit": "32c840a141ae93a892c9fd739619ff03fdcf023c",
+  "branch": "feature/git-storage-decorator",
+  "worktree": null,
+  "last_completed_task": null,
+  "finish_action": null,
+  "finished_at": null,
+  "finish_base": null
+}

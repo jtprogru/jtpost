@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/jtprogru/jtpost/internal/adapters/config"
 )
 
@@ -119,4 +120,60 @@ func TestRunDoctor_Healthy(t *testing.T) {
 	if !strings.Contains(buf.String(), "Все проверки пройдены") {
 		t.Fatalf("ожидали финальное сообщение об успехе, получили: %s", buf.String())
 	}
+}
+
+func TestCheckGitRepo_NotARepo(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.PostsDir = t.TempDir()
+	cfg.Storage.Git.Enabled = true
+	results := checkGitRepo(cfg)
+	if len(results) != 1 || results[0].level != levelFail {
+		t.Fatalf("ожидали 1 fail, got %+v", results)
+	}
+}
+
+func TestCheckGitRepo_CleanRepo(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := initBareGitRepo(t, dir); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.NewDefaultConfig()
+	cfg.PostsDir = dir
+	cfg.Storage.Git.Enabled = true
+	results := checkGitRepo(cfg)
+	if len(results) < 1 || results[0].level != levelOK {
+		t.Fatalf("ожидали clean ok, got %+v", results)
+	}
+	if !strings.Contains(results[0].message, "clean") {
+		t.Errorf("message=%q, want contains 'clean'", results[0].message)
+	}
+}
+
+func TestCheckGitRepo_DirtyRepo(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := initBareGitRepo(t, dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "untracked.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.NewDefaultConfig()
+	cfg.PostsDir = dir
+	cfg.Storage.Git.Enabled = true
+	results := checkGitRepo(cfg)
+	if len(results) < 1 || results[0].level != levelWarn {
+		t.Fatalf("ожидали dirty warn, got %+v", results)
+	}
+	if !strings.Contains(results[0].message, "dirty") {
+		t.Errorf("message=%q, want contains 'dirty'", results[0].message)
+	}
+}
+
+// initBareGitRepo инициализирует non-bare git-репо в dir для doctor-тестов.
+func initBareGitRepo(t *testing.T, dir string) (string, error) {
+	t.Helper()
+	if _, err := git.PlainInit(dir, false); err != nil {
+		return "", err
+	}
+	return dir, nil
 }

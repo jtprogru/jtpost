@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/fsrepo"
+	"github.com/jtprogru/jtpost/internal/adapters/gitrepo"
 	"github.com/jtprogru/jtpost/internal/adapters/sqlite"
 	"github.com/jtprogru/jtpost/internal/core"
 )
@@ -106,6 +107,37 @@ func TestOpen_Postgres_MissingDSN(t *testing.T) {
 	_, _, err := Open(cfg)
 	if !errors.Is(err, core.ErrConfigInvalid) {
 		t.Fatalf("want ErrConfigInvalid, got %v", err)
+	}
+}
+
+func TestOpen_Dispatch_FS_GitEnabled(t *testing.T) {
+	cfg := mkCfg(t, func(c *config.Config) {
+		c.Storage.Type = "fs"
+		c.Storage.Git.Enabled = true
+		c.Storage.Git.Branch = "main"
+	})
+	repo, closer, err := Open(cfg)
+	if err != nil {
+		t.Fatalf("Open(fs+git): %v", err)
+	}
+	defer closer.Close()
+	if _, ok := repo.(*gitrepo.GitDecorator); !ok {
+		t.Fatalf("expected *gitrepo.GitDecorator, got %T", repo)
+	}
+}
+
+func TestOpen_Dispatch_FS_GitDisabled_Unchanged(t *testing.T) {
+	cfg := mkCfg(t, func(c *config.Config) {
+		c.Storage.Type = "fs"
+		c.Storage.Git.Enabled = false
+	})
+	repo, closer, err := Open(cfg)
+	if err != nil {
+		t.Fatalf("Open(fs): %v", err)
+	}
+	defer closer.Close()
+	if _, ok := repo.(*fsrepo.FileSystemPostRepository); !ok {
+		t.Fatalf("expected fsrepo (no decorator), got %T", repo)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/fsrepo"
+	"github.com/jtprogru/jtpost/internal/adapters/gitrepo"
 	"github.com/jtprogru/jtpost/internal/adapters/postgres"
 	"github.com/jtprogru/jtpost/internal/adapters/sqlite"
 	"github.com/jtprogru/jtpost/internal/core"
@@ -34,6 +35,13 @@ func OpenAs(cfg *config.Config, storageType string) (core.PostRepository, io.Clo
 		repo, err := fsrepo.NewFileSystemRepository(cfg.PostsDir)
 		if err != nil {
 			return nil, nil, err
+		}
+		if cfg.Storage.Git.Enabled {
+			dec, err := gitrepo.NewGitDecorator(repo, cfg.PostsDir, cfg.Storage.Git)
+			if err != nil {
+				return nil, nil, err
+			}
+			return dec, dec, nil
 		}
 		return repo, nopCloser{}, nil
 	case "sqlite":

@@ -7,14 +7,22 @@ posts_dir: content/posts
 templates_dir: templates
 
 # Хранилище постов: fs (файловая система) | sqlite | postgres.
+# Git-decorator активен только при storage.type=fs && storage.git.enabled=true.
 storage:
   type: fs
   git:
-    enabled: false
-    auto_commit: true
-    auto_push: false
-    branch: main
-    commit_template: "chore: update post {{.Slug}}"
+    enabled: false              # включить git auto-commit над posts_dir
+    auto_commit: true           # коммитить после Create/Update/Delete
+    auto_push: false             # push в storage.git.remote после каждого commit
+    remote: ""                   # SSH (git@github.com:user/posts.git) или HTTPS URL
+    branch: main                 # ветка для initial-инициализации
+    # Доступные переменные: .Slug .Title .ID .Status .Operation .Time
+    commit_template: "chore: {{.Operation}} post {{.Slug}}"
+    # Auth для push:
+    #   - SSH: ssh-agent (запустить eval $(ssh-agent) и ssh-add ~/.ssh/id_*)
+    #   - HTTPS: env GIT_HTTPS_TOKEN=<personal-access-token>
+    # Author identity:
+    #   - env GIT_AUTHOR_NAME / GIT_AUTHOR_EMAIL → fallback jtpost <bot@jtpost.local>
   sqlite:
     dsn: .jtpost.db
   postgres:

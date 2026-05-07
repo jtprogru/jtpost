@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
@@ -127,7 +128,7 @@ func NewDefaultConfig() *Config {
 			Git: GitStorageConfig{
 				AutoCommit:     true,
 				Branch:         "main",
-				CommitTemplate: "chore: update post {{.Slug}}",
+				CommitTemplate: "chore: {{.Operation}} post {{.Slug}}",
 			},
 			SQLite: SQLiteConfig{
 				DSN: ".jtpost.db",
@@ -318,6 +319,19 @@ func (c *Config) Validate() error {
 	}
 	if c.Storage.Postgres.MaxOpenConns < 0 || c.Storage.Postgres.MaxIdleConns < 0 {
 		return fmt.Errorf("%w: storage.postgres pool sizes must be non-negative", core.ErrConfigInvalid)
+	}
+	if c.Storage.Git.Enabled {
+		if c.Storage.Git.AutoPush && c.Storage.Git.Remote == "" {
+			return fmt.Errorf("%w: storage.git.auto_push=true requires storage.git.remote", core.ErrConfigInvalid)
+		}
+		if c.Storage.Git.CommitTemplate != "" {
+			if _, err := template.New("commit").Parse(c.Storage.Git.CommitTemplate); err != nil {
+				return fmt.Errorf("%w: storage.git.commit_template invalid: %w", core.ErrConfigInvalid, err)
+			}
+		}
+		if c.Storage.Git.Branch == "" {
+			c.Storage.Git.Branch = "main"
+		}
 	}
 	if c.Auth.TenantDefault == uuid.Nil {
 		return fmt.Errorf("%w: auth.tenant_default required", core.ErrConfigInvalid)
