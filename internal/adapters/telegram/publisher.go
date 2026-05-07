@@ -49,6 +49,14 @@ type Config struct {
 // telegramCaptionLimit — лимит caption на одно фото.
 const telegramCaptionLimit = 1024
 
+// telegramMaxRetryAfter — максимальная пауза, которую мы готовы выдержать
+// при 429-Too Many Requests от Telegram. Если retry_after больше — поднимаем
+// ошибку наверх (Worker примет решение через outbox-backoff).
+const telegramMaxRetryAfter = 30 * time.Second
+
+// telegramMaxRetries — сколько раз мы перепосылаем запрос при 429.
+const telegramMaxRetries = 2
+
 // NewPublisher создаёт новый Telegram Publisher.
 func NewPublisher(cfg Config) *Publisher {
 	route := cfg.UploadRoute
@@ -251,6 +259,81 @@ func (p *Publisher) resolveOne(im MDImage) photoSource {
 	return photoSource{photoSourceNone, ""}
 }
 
+// telegramAPIError возвращается, когда API ответил 4xx/5xx без обработки на
+// retry-уровне. Позволяет вызывающему коду различать "клиент ошибся" (валидация)
+// и "сетевые проблемы" (worker-retry оправдан).
+type telegramAPIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *telegramAPIError) Error() string {
+	return fmt.Sprintf("Telegram API статус %d: %s", e.StatusCode, e.Body)
+}
+
+// doAPIRequest шлёт POST-запрос в Telegram API с обработкой 429-Too Many
+// Requests. На 429 парсит parameters.retry_after, ждёт указанное время
+// (≤ telegramMaxRetryAfter) и повторяет до telegramMaxRetries раз. body []byte
+// должен быть переиспользуемым (multipart-buffer тоже подходит — мы переоткрываем
+// reader на каждой попытке). Возвращает финальный response body или ошибку.
+func (p *Publisher) doAPIRequest(ctx context.Context, apiURL, contentType string, body []byte) ([]byte, error) {
+	var lastBody []byte
+	var lastStatus int
+	for attempt := 0; attempt <= telegramMaxRetries; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("создание запроса: %w", err)
+		}
+		req.Header.Set("Content-Type", contentType)
+		resp, err := p.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP запрос: %w", err)
+		}
+		respBody, rerr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if rerr != nil {
+			return nil, fmt.Errorf("чтение ответа: %w", rerr)
+		}
+		lastBody = respBody
+		lastStatus = resp.StatusCode
+
+		if resp.StatusCode == http.StatusOK {
+			return respBody, nil
+		}
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < telegramMaxRetries {
+			wait := parseRetryAfter(respBody)
+			if wait <= 0 || wait > telegramMaxRetryAfter {
+				break // слишком долго — отдаём вверх для outbox-backoff
+			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+			continue
+		}
+		break
+	}
+	return nil, &telegramAPIError{StatusCode: lastStatus, Body: string(lastBody)}
+}
+
+// parseRetryAfter извлекает retry_after из 429-ответа Telegram API.
+// Стандартная схема: {"ok":false, "error_code":429, "parameters":{"retry_after":<sec>}}.
+func parseRetryAfter(body []byte) time.Duration {
+	var resp struct {
+		Parameters struct {
+			RetryAfter int `json:"retry_after"`
+		} `json:"parameters"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return 0
+	}
+	if resp.Parameters.RetryAfter <= 0 {
+		return 0
+	}
+	return time.Duration(resp.Parameters.RetryAfter) * time.Second
+}
+
 // firstPhotoSource — первый разрешимый источник (для одиночного sendPhoto).
 func (p *Publisher) firstPhotoSource(imgs []MDImage) photoSource {
 	for _, im := range imgs {
@@ -333,22 +416,9 @@ func (p *Publisher) sendMediaGroup(ctx context.Context, sources []photoSource, c
 	}
 
 	apiURL := fmt.Sprintf("%s%s/sendMediaGroup", p.baseURL, p.botToken)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, body)
+	respBody, err := p.doAPIRequest(ctx, apiURL, mw.FormDataContentType(), body.Bytes())
 	if err != nil {
-		return "", fmt.Errorf("создание запроса: %w", err)
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("HTTP запрос: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("чтение ответа: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API вернул ошибку: %s", string(respBody))
+		return "", err
 	}
 	var result struct {
 		OK     bool              `json:"ok"`
@@ -391,35 +461,11 @@ func (p *Publisher) sendPhotoFile(ctx context.Context, filePath, caption string)
 	}
 
 	apiURL := fmt.Sprintf("%s%s/sendPhoto", p.baseURL, p.botToken)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, body)
+	respBody, err := p.doAPIRequest(ctx, apiURL, mw.FormDataContentType(), body.Bytes())
 	if err != nil {
-		return "", fmt.Errorf("создание запроса: %w", err)
+		return "", err
 	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("HTTP запрос: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("чтение ответа: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API вернул ошибку: %s", string(respBody))
-	}
-	var result struct {
-		OK     bool            `json:"ok"`
-		Result telegramMessage `json:"result"`
-	}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("десериализация ответа: %w", err)
-	}
-	if !result.OK {
-		return "", errors.New("API вернул ok=false")
-	}
-	channelName := strings.TrimPrefix(p.channelID, "-100")
-	return fmt.Sprintf("https://t.me/%s/%d", channelName, result.Result.MessageID), nil
+	return parseSingleMessageResp(respBody, p.channelID)
 }
 
 // sendPhoto публикует фото с опциональным caption. Возвращает URL поста.
@@ -435,89 +481,47 @@ func (p *Publisher) sendPhoto(ctx context.Context, photoURL, caption string) (st
 	if err != nil {
 		return "", fmt.Errorf("ошибка сериализации: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	respBody, err := p.doAPIRequest(ctx, apiURL, "application/json", body)
 	if err != nil {
-		return "", fmt.Errorf("ошибка создания запроса: %w", err)
+		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("ошибка HTTP запроса: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("ошибка чтения ответа: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API вернул ошибку: %s", string(respBody))
-	}
-	var result struct {
-		OK     bool            `json:"ok"`
-		Result telegramMessage `json:"result"`
-	}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", fmt.Errorf("ошибка десериализации ответа: %w", err)
-	}
-	if !result.OK {
-		return "", errors.New("API вернул ok=false")
-	}
-	channelName := strings.TrimPrefix(p.channelID, "-100")
-	return fmt.Sprintf("https://t.me/%s/%d", channelName, result.Result.MessageID), nil
+	return parseSingleMessageResp(respBody, p.channelID)
 }
 
 // sendMessage отправляет текстовое сообщение в канал.
 func (p *Publisher) sendMessage(ctx context.Context, text string) (string, error) {
 	apiURL := fmt.Sprintf("%s%s/sendMessage", p.baseURL, p.botToken)
-
 	payload := map[string]any{
 		"chat_id":                  p.channelID,
 		"text":                     text,
 		"parse_mode":               "HTML",
 		"disable_web_page_preview": true,
 	}
-
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("ошибка сериализации: %w", err)
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	respBody, err := p.doAPIRequest(ctx, apiURL, "application/json", body)
 	if err != nil {
-		return "", fmt.Errorf("ошибка создания запроса: %w", err)
+		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	return parseSingleMessageResp(respBody, p.channelID)
+}
 
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("ошибка HTTP запроса: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("ошибка чтения ответа: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API вернул ошибку: %s", string(respBody))
-	}
-
+// parseSingleMessageResp парсит ответ Telegram API на endpoints, которые
+// возвращают одиночный message (sendMessage, sendPhoto). Возвращает
+// public-URL канального сообщения.
+func parseSingleMessageResp(respBody []byte, channelID string) (string, error) {
 	var result struct {
 		OK     bool            `json:"ok"`
 		Result telegramMessage `json:"result"`
 	}
-
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", fmt.Errorf("ошибка десериализации ответа: %w", err)
 	}
-
 	if !result.OK {
 		return "", errors.New("API вернул ok=false")
 	}
-
-	// Формируем ссылку на сообщение
-	// Для каналов: https://t.me/channelname/message_id
-	channelName := strings.TrimPrefix(p.channelID, "-100")
+	channelName := strings.TrimPrefix(channelID, "-100")
 	return fmt.Sprintf("https://t.me/%s/%d", channelName, result.Result.MessageID), nil
 }
