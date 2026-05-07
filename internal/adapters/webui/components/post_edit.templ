@@ -80,6 +80,14 @@ templ PostEdit(p PostEditProps) {
 					<a href="/ui/" class="post-edit__back">Cancel</a>
 				</div>
 			</form>
+			<form
+				method="post"
+				action={ templ.URL("/ui/posts/" + p.Post.ID.String() + "/delete") }
+				onsubmit="return confirm('Удалить пост безвозвратно?');"
+				class="post-edit__delete-form"
+			>
+				<button type="submit" class="btn btn--danger">Удалить пост</button>
+			</form>
 		</div>
 	}
 }

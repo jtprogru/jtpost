@@ -93,11 +93,12 @@ var serveCmd = &cobra.Command{
 
 		// Web UI v2 (htmx + templ).
 		ui := webui.NewHandler(webui.Config{
-			Service: service,
-			Auth:    authSvc,
-			Audit:   auditSvc,
-			Cfg:     cfg,
-			Logger:  log,
+			Service:   service,
+			Auth:      authSvc,
+			Audit:     auditSvc,
+			AuditRepo: bundle.AuditLog,
+			Cfg:       cfg,
+			Logger:    log,
 		})
 
 		// Создаём HTTP сервер с логгером

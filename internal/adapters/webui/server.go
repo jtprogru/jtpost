@@ -24,21 +24,23 @@ var staticFS embed.FS
 
 // Handler — UI handler. Обслуживает /ui/* path-prefix.
 type Handler struct {
-	service  *core.PostService
-	authSvc  *core.AuthService  // nil — auth disabled, login UI отключён
-	auditSvc *core.AuditService // nil-safe
-	cfg      *config.Config
-	log      *logger.Logger
-	mux      *http.ServeMux
+	service   *core.PostService
+	authSvc   *core.AuthService    // nil — auth disabled, login UI отключён
+	auditSvc  *core.AuditService   // nil-safe (для записи)
+	auditRepo core.AuditRepository // nil — page /ui/audit вернёт 503
+	cfg       *config.Config
+	log       *logger.Logger
+	mux       *http.ServeMux
 }
 
 // Config — параметры NewHandler.
 type Config struct {
-	Service  *core.PostService
-	Auth     *core.AuthService
-	Audit    *core.AuditService
-	Cfg      *config.Config
-	Logger   *logger.Logger
+	Service   *core.PostService
+	Auth      *core.AuthService
+	Audit     *core.AuditService
+	AuditRepo core.AuditRepository
+	Cfg       *config.Config
+	Logger    *logger.Logger
 }
 
 // NewHandler создаёт UI handler с готовой подсетью routes.
@@ -49,12 +51,13 @@ func NewHandler(c Config) *Handler {
 		log = logger.NewDefault()
 	}
 	h := &Handler{
-		service:  c.Service,
-		authSvc:  c.Auth,
-		auditSvc: c.Audit,
-		cfg:      c.Cfg,
-		log:      log,
-		mux:      http.NewServeMux(),
+		service:   c.Service,
+		authSvc:   c.Auth,
+		auditSvc:  c.Audit,
+		auditRepo: c.AuditRepo,
+		cfg:       c.Cfg,
+		log:       log,
+		mux:       http.NewServeMux(),
 	}
 	h.registerRoutes()
 	return h
@@ -71,6 +74,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("/ui/posts/", h.handlePostByID)
 	h.mux.HandleFunc("/ui/preview", h.handlePreview)
 	h.mux.HandleFunc("/ui/plan", h.handlePlan)
+	h.mux.HandleFunc("/ui/audit", h.handleAudit)
 	h.mux.HandleFunc("/ui/login", h.handleLogin)
 	h.mux.HandleFunc("/ui/logout", h.handleLogout)
 

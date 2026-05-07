@@ -1,0 +1,87 @@
+package components
+
+import (
+	"github.com/jtprogru/jtpost/internal/core"
+)
+
+// AuditProps — данные для audit page.
+type AuditProps struct {
+	Entries     []*core.AuditEntry
+	FilterAction string
+	UserEmail    string
+}
+
+templ Audit(p AuditProps) {
+	@Layout(LayoutProps{Title: "Audit log", ActiveNav: "audit", UserEmail: p.UserEmail}) {
+		<h1>Audit log</h1>
+		<form class="toolbar" method="get" action="/ui/audit">
+			<select name="action">
+				<option value="" selected?={ p.FilterAction == "" }>Все события</option>
+				for _, a := range []string{
+					"auth.login.success", "auth.login.fail", "auth.logout",
+					"auth.oauth.login",
+					"post.created", "post.updated", "post.deleted", "post.published",
+					"token.issued", "token.revoked",
+				} {
+					<option value={ a } selected?={ p.FilterAction == a }>{ a }</option>
+				}
+			</select>
+			<button type="submit" class="btn">Фильтр</button>
+		</form>
+		if len(p.Entries) == 0 {
+			<div class="empty">Нет audit-событий по фильтрам.</div>
+		} else {
+			<table class="posts-table audit-table">
+				<thead>
+					<tr>
+						<th>When</th>
+						<th>Action</th>
+						<th>Outcome</th>
+						<th>Actor</th>
+						<th>Resource</th>
+						<th>IP</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, e := range p.Entries {
+						<tr>
+							<td>{ e.OccurredAt.Format("2006-01-02 15:04:05") }</td>
+							<td>{ string(e.Action) }</td>
+							<td>
+								<span class={ "audit-outcome audit-outcome--" + string(e.Outcome) }>
+									{ string(e.Outcome) }
+								</span>
+							</td>
+							<td>{ shortActor(e) }</td>
+							<td>{ shortResource(e) }</td>
+							<td>{ e.IP }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+	}
+}
+
+func shortActor(e *core.AuditEntry) string {
+	if e.ActorID == [16]byte{} {
+		if e.ActorType == "" {
+			return "—"
+		}
+		return string(e.ActorType)
+	}
+	return string(e.ActorType) + " " + e.ActorID.String()[:8]
+}
+
+func shortResource(e *core.AuditEntry) string {
+	if e.ResourceType == "" {
+		return "—"
+	}
+	if e.ResourceID == "" {
+		return e.ResourceType
+	}
+	if len(e.ResourceID) > 12 {
+		return e.ResourceType + " " + e.ResourceID[:8]
+	}
+	return e.ResourceType + " " + e.ResourceID
+}

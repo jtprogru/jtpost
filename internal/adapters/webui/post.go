@@ -5,18 +5,38 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/adapters/webui/components"
 	"github.com/jtprogru/jtpost/internal/core"
 )
 
 // handlePostByID — GET → render edit page; POST → save.
+// Также роутит /ui/posts/{id}/delete и /ui/posts/new.
 func (h *Handler) handlePostByID(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/ui/posts/")
-	if idStr == "" || strings.Contains(idStr, "/") {
+	rest := strings.TrimPrefix(r.URL.Path, "/ui/posts/")
+	if rest == "" {
 		http.NotFound(w, r)
 		return
 	}
-	id, err := core.ParsePostID(idStr)
+	if rest == "new" {
+		h.handlePostNew(w, r)
+		return
+	}
+	// /ui/posts/{id}/delete
+	if id, ok := strings.CutSuffix(rest, "/delete"); ok {
+		parsed, err := core.ParsePostID(id)
+		if err != nil {
+			http.Error(w, "invalid post id", http.StatusBadRequest)
+			return
+		}
+		h.deletePost(w, r, parsed)
+		return
+	}
+	if strings.Contains(rest, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	id, err := core.ParsePostID(rest)
 	if err != nil {
 		http.Error(w, "invalid post id", http.StatusBadRequest)
 		return
@@ -29,6 +49,128 @@ func (h *Handler) handlePostByID(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handlePostNew — GET render form; POST create + redirect на edit page.
+func (h *Handler) handlePostNew(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.renderPostNew(w, r, components.PostNewProps{UserEmail: userEmailFromContext(r.Context())})
+	case http.MethodPost:
+		h.createPost(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) renderPostNew(w http.ResponseWriter, r *http.Request, p components.PostNewProps) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if p.Error != "" {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}
+	if err := components.PostNew(p).Render(r.Context(), w); err != nil {
+		h.log.Error("ui post new render: %v", err)
+	}
+}
+
+func (h *Handler) createPost(w http.ResponseWriter, r *http.Request) {
+	if h.cfg == nil {
+		http.Error(w, "config not loaded", http.StatusServiceUnavailable)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.renderPostNew(w, r, components.PostNewProps{Error: "invalid form"})
+		return
+	}
+	title := strings.TrimSpace(r.PostForm.Get("title"))
+	slug := strings.TrimSpace(r.PostForm.Get("slug"))
+	tagsRaw := r.PostForm.Get("tags")
+	if title == "" {
+		h.renderPostNew(w, r, components.PostNewProps{
+			Tags:      tagsRaw,
+			Slug:      slug,
+			UserEmail: userEmailFromContext(r.Context()),
+			Error:     "title обязателен",
+		})
+		return
+	}
+
+	// TenantID/AuthorID — из ctx (auth) или дефолтов в cfg.
+	tenantID := h.cfg.Auth.TenantDefault
+	authorID := h.cfg.Auth.AuthorDefault
+	if t, ok := core.TenantFromContext(r.Context()); ok && t != (uuid.UUID{}) {
+		tenantID = t
+	}
+	if u, ok := core.UserFromContext(r.Context()); ok && u != nil {
+		authorID = u.ID
+	}
+
+	var tags []string
+	if tagsRaw != "" {
+		for p := range strings.SplitSeq(tagsRaw, ",") {
+			if t := strings.TrimSpace(p); t != "" {
+				tags = append(tags, t)
+			}
+		}
+	}
+
+	post, err := h.service.CreatePost(r.Context(), core.CreatePostInput{
+		TenantID: tenantID,
+		AuthorID: authorID,
+		Title:    title,
+		Slug:     slug,
+		Tags:     tags,
+	})
+	if err != nil {
+		h.renderPostNew(w, r, components.PostNewProps{
+			Title:     title,
+			Tags:      tagsRaw,
+			Slug:      slug,
+			UserEmail: userEmailFromContext(r.Context()),
+			Error:     "не удалось создать: " + err.Error(),
+		})
+		return
+	}
+	_ = h.auditSvc.Log(r.Context(), core.AuditEntry{
+		Action:       core.AuditPostCreated,
+		Outcome:      core.AuditOutcomeSuccess,
+		ResourceType: "post",
+		ResourceID:   post.ID.String(),
+		TenantID:     post.TenantID,
+		Metadata:     map[string]any{"via": "webui"},
+	})
+	http.Redirect(w, r, "/ui/posts/"+post.ID.String()+"?saved=1", http.StatusSeeOther)
+}
+
+func (h *Handler) deletePost(w http.ResponseWriter, r *http.Request, id core.PostID) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	post, err := h.service.GetByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		h.log.Error("ui delete get: %v", err)
+		http.Error(w, "internal", http.StatusInternalServerError)
+		return
+	}
+	if err := h.service.DeletePost(r.Context(), id); err != nil {
+		h.log.Error("ui delete: %v", err)
+		http.Error(w, "delete failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = h.auditSvc.Log(r.Context(), core.AuditEntry{
+		Action:       core.AuditPostDeleted,
+		Outcome:      core.AuditOutcomeSuccess,
+		ResourceType: "post",
+		ResourceID:   id.String(),
+		TenantID:     post.TenantID,
+		Metadata:     map[string]any{"via": "webui", "title": post.Title},
+	})
+	http.Redirect(w, r, "/ui/", http.StatusSeeOther)
 }
 
 func (h *Handler) renderPostEdit(w http.ResponseWriter, r *http.Request, id core.PostID, errMsg string, saved bool) {

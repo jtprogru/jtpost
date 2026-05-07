@@ -182,6 +182,11 @@ h1, h2, h3 { color: var(--fg); }
 
 .btn:hover { opacity: 0.9; }
 
+.btn--danger {
+    background: var(--danger);
+    color: var(--accent-fg);
+}
+
 .htmx-indicator { opacity: 0; transition: opacity 200ms; }
 .htmx-request .htmx-indicator { opacity: 1; }
 
@@ -377,6 +382,12 @@ h1, h2, h3 { color: var(--fg); }
     .post-edit__split { grid-template-columns: 1fr; }
 }
 
+.post-edit__delete-form {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px dashed var(--border);
+}
+
 /* Plan page */
 .plan { display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1rem; }
 .plan__group {
@@ -399,3 +410,16 @@ h1, h2, h3 { color: var(--fg); }
 .plan__title { color: var(--fg); text-decoration: none; flex-grow: 1; font-weight: 500; }
 .plan__title:hover { color: var(--accent); }
 .plan__type { color: var(--fg-muted); font-size: 0.85rem; }
+
+/* Audit page */
+.audit-table td:first-child { font-family: ui-monospace, monospace; font-size: 0.85rem; white-space: nowrap; }
+.audit-outcome {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 0.2rem;
+    font-size: 0.78rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+}
+.audit-outcome--success { color: var(--success); border-color: var(--success); }
+.audit-outcome--failure { color: var(--danger); border-color: var(--danger); }

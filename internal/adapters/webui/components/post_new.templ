@@ -1,0 +1,42 @@
+package components
+
+// PostNewProps — данные формы создания поста.
+type PostNewProps struct {
+	Title     string // pre-fill после ошибки
+	Tags      string
+	Slug      string
+	UserEmail string
+	Error     string
+}
+
+templ PostNew(p PostNewProps) {
+	@Layout(LayoutProps{Title: "New post", ActiveNav: "dashboard", UserEmail: p.UserEmail}) {
+		<div class="post-edit">
+			<div class="post-edit__header">
+				<a href="/ui/" class="post-edit__back">← All posts</a>
+				<h1>New post</h1>
+			</div>
+			if p.Error != "" {
+				<div class="form-error">{ p.Error }</div>
+			}
+			<form method="post" action="/ui/posts/new" class="post-edit__form">
+				<label>
+					Title
+					<input type="text" name="title" value={ p.Title } required autofocus/>
+				</label>
+				<label>
+					Slug (опционально — сгенерируется из title)
+					<input type="text" name="slug" value={ p.Slug } pattern="[a-z0-9\-]*"/>
+				</label>
+				<label>
+					Tags (comma-separated)
+					<input type="text" name="tags" value={ p.Tags }/>
+				</label>
+				<div class="post-edit__actions">
+					<button type="submit" class="btn">Create</button>
+					<a href="/ui/" class="post-edit__back">Cancel</a>
+				</div>
+			</form>
+		</div>
+	}
+}
