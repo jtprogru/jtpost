@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
+
+	"github.com/jtprogru/jtpost/internal/logger"
 )
 
 // WorkerConfig конфигурация Worker'а.
@@ -15,7 +16,7 @@ type WorkerConfig struct {
 	MaxAttempts     int
 	StuckThreshold  time.Duration // entries in_flight дольше этого периодически возвращаются в pending
 	SweepInterval   time.Duration // как часто запускать sweep
-	Logger          *log.Logger
+	Logger          *logger.Logger
 }
 
 // Worker обрабатывает outbox-очередь.
@@ -25,6 +26,7 @@ type Worker struct {
 	publisher Publisher
 	clock     Clock
 	cfg       WorkerConfig
+	log       *logger.Logger
 }
 
 // NewWorker создаёт worker. cfg-поля с zero-value заменяются на defaults.
@@ -45,14 +47,14 @@ func NewWorker(outbox OutboxRepository, posts PostRepository, pub Publisher, clo
 		cfg.SweepInterval = 5 * time.Minute
 	}
 	if cfg.Logger == nil {
-		cfg.Logger = log.Default()
+		cfg.Logger = logger.New(logger.Config{Level: logger.LevelInfo, Prefix: "worker"})
 	}
-	return &Worker{outbox: outbox, posts: posts, publisher: pub, clock: clock, cfg: cfg}
+	return &Worker{outbox: outbox, posts: posts, publisher: pub, clock: clock, cfg: cfg, log: cfg.Logger}
 }
 
 // Run запускает poll-loop до отмены ctx. Возвращает ctx.Err().
 func (w *Worker) Run(ctx context.Context) error {
-	w.cfg.Logger.Printf("worker: started (poll=%s, max_attempts=%d, sweep=%s/threshold=%s)",
+	w.log.Info("started (poll=%s, max_attempts=%d, sweep=%s/threshold=%s)",
 		w.cfg.PollInterval, w.cfg.MaxAttempts, w.cfg.SweepInterval, w.cfg.StuckThreshold)
 	w.sweepStuck(ctx)
 	t := time.NewTicker(w.cfg.PollInterval)
@@ -64,7 +66,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		for {
 			processed, err := w.processOne(ctx)
 			if err != nil {
-				w.cfg.Logger.Printf("worker: process error: %v", err)
+				w.log.Error("process error: %v", err)
 			}
 			if !processed {
 				break
@@ -72,7 +74,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		}
 		select {
 		case <-ctx.Done():
-			w.cfg.Logger.Printf("worker: stopped (%v)", ctx.Err())
+			w.log.Info("stopped (%v)", ctx.Err())
 			return ctx.Err()
 		case <-sweep.C:
 			w.sweepStuck(ctx)
@@ -85,11 +87,11 @@ func (w *Worker) Run(ctx context.Context) error {
 func (w *Worker) sweepStuck(ctx context.Context) {
 	n, err := w.outbox.SweepStuck(ctx, w.cfg.StuckThreshold, w.clock.Now())
 	if err != nil {
-		w.cfg.Logger.Printf("worker: sweep failed: %v", err)
+		w.log.Error("sweep failed: %v", err)
 		return
 	}
 	if n > 0 {
-		w.cfg.Logger.Printf("worker: swept %d stuck in_flight entries back to pending", n)
+		w.log.Info("swept %d stuck in_flight entries back to pending", n)
 	}
 }
 
@@ -104,7 +106,7 @@ func (w *Worker) processOne(ctx context.Context) (bool, error) {
 	if entry == nil {
 		return false, nil
 	}
-	w.cfg.Logger.Printf("worker: claimed entry %s for post %s (attempt %d)", entry.ID, entry.PostID, entry.Attempts+1)
+	w.log.Debug("claimed entry %s for post %s (attempt %d)", entry.ID, entry.PostID, entry.Attempts+1)
 
 	post, err := w.posts.GetByID(ctx, entry.PostID)
 	if err != nil {
@@ -122,18 +124,18 @@ func (w *Worker) processOne(ctx context.Context) (bool, error) {
 		updated.Revision++
 		updated.UpdatedAt = nowTs
 		if uErr := w.posts.Update(ctx, updated); uErr != nil {
-			w.cfg.Logger.Printf("worker: update post after publish failed: %v", uErr)
+			w.log.Error("update post after publish failed: %v", uErr)
 			// Помечаем retry, чтобы попробовать снова.
 			return w.markRetryOrFail(ctx, entry, fmt.Errorf("post update: %w", uErr)), nil
 		}
 		if dErr := w.outbox.MarkDone(ctx, entry.ID, w.clock.Now()); dErr != nil {
-			w.cfg.Logger.Printf("worker: mark done failed: %v", dErr)
+			w.log.Error("mark done failed: %v", dErr)
 		}
-		w.cfg.Logger.Printf("worker: published %s", entry.PostID)
+		w.log.Info("published %s", entry.PostID)
 		return true, nil
 	}
 
-	w.cfg.Logger.Printf("worker: publish failed for %s: %v", entry.PostID, pubErr)
+	w.log.Warn("publish failed for %s: %v", entry.PostID, pubErr)
 	w.markRetryOrFail(ctx, entry, pubErr)
 	return true, nil
 }
@@ -152,16 +154,16 @@ func (w *Worker) markRetryOrFail(ctx context.Context, entry *OutboxEntry, cause 
 			post.UpdatedAt = now
 			_ = w.posts.Update(ctx, post)
 		}
-		w.cfg.Logger.Printf("worker: entry %s permanently failed after %d attempts", entry.ID, attempts)
+		w.log.Error("entry %s permanently failed after %d attempts", entry.ID, attempts)
 		return true
 	}
 	backoff := ComputeBackoff(w.cfg.BackoffSchedule, attempts)
 	nextAt := now.Add(backoff)
 	if err := w.outbox.MarkRetry(ctx, entry.ID, attempts, nextAt, cause.Error(), now); err != nil {
-		w.cfg.Logger.Printf("worker: mark retry failed: %v", err)
+		w.log.Error("mark retry failed: %v", err)
 		return false
 	}
-	w.cfg.Logger.Printf("worker: entry %s scheduled for retry in %s (attempt %d/%d)", entry.ID, backoff, attempts, entry.MaxAttempts)
+	w.log.Info("entry %s scheduled for retry in %s (attempt %d/%d)", entry.ID, backoff, attempts, entry.MaxAttempts)
 	return true
 }
 

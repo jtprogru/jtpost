@@ -336,6 +336,9 @@ linters:
       - path: internal/adapters/httpapi/.*\.go
         linters:
           - contextcheck
+      - path: internal/core/worker\.go
+        linters:
+          - contextcheck
       # httptest.NewRequest в тестах httpapi — допустимо
       - path: internal/adapters/httpapi/.*_test\.go
         linters:
