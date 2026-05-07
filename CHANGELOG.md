@@ -7,6 +7,32 @@
 
 ## [Неопубликовано]
 
+### F5b: OpenAPI client codegen + `--remote` mode (continuation of B.3)
+
+**Добавлено:**
+- **Generated HTTP client** в `internal/adapters/apiclient/client.gen.go` — typed methods для всех 13 operations (`ListPostsWithResponse`, `AuthLoginWithResponse`, etc.), `Client` (raw) и `ClientWithResponses` (typed). Generated через `oapi-codegen` v2 с `client: true`.
+- **`oapi-codegen-config-client.yaml`** — отдельный config для клиентского codegen.
+- **CLI глобальные флаги**: `--remote URL` (включает remote-mode) и `--auth TOKEN` (Bearer-token для `--remote`). Env-fallback `JTPOST_AUTH_TOKEN`.
+- **Helper `internal/cli/remote.go:newAPIClient(cmd)`** — возвращает `(*apiclient.ClientWithResponses, isRemote bool, error)`. Проверяет URL, валидирует auth, инжектит `Authorization: Bearer ...` через `apiclient.WithRequestEditorFn`.
+- **`jtpost list --remote URL --auth TOKEN`** — proof-of-concept команда: вместо локального Bundle вызывает `cli.ListPostsWithResponse(ctx, params)` и выводит JSON. На 401 → exit с error "unauthorized: invalid or expired --auth token".
+- **`task generate`** теперь aggregate из 3 sub-tasks: `:sqlc`, `:openapi:types`, `:openapi:client`. Старый `task generate:openapi` — alias на оба openapi-jobs.
+- **`api/openapi.yaml`** обновлён: operationId `login` → `authLogin` чтобы избежать collision с schema `LoginResponse` в client codegen.
+- **Зависимости**: `github.com/oapi-codegen/runtime v1.4.0` (transient через generated code).
+
+**Backward-compat:** existing CLI команды без `--remote` работают как раньше (local Bundle path не изменён). Generated `oapigen.LoginResponse` структурно идентичен — auth_handlers продолжает использовать его.
+
+**Migration path:**
+1. Запустить `jtpost serve` на удалённом сервере.
+2. Получить PAT (`jtpost token create --user-id ... --name cli`).
+3. На клиенте: `jtpost list --remote https://server/api/v1 --auth jtpat_...` (или `JTPOST_AUTH_TOKEN=jtpat_... jtpost list --remote https://server/api/v1`).
+
+**Отложено в F5c:**
+- `--remote` для `jtpost new/edit/delete/show/stats/plan/tags/next` (proof-of-concept только в `list`).
+- Server-side ServerInterface codegen (full handler replacement).
+- Table-mode вывод для remote (сейчас JSON-only).
+- Token caching, retry-with-backoff, 429-handling.
+- Legacy `/api/...` deprecation period.
+
 ### F5: OpenAPI 3.1 spec + types codegen (start of B.3)
 
 **Добавлено:**

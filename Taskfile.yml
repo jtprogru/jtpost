@@ -81,10 +81,11 @@ tasks:
 
   # === Кодогенерация и миграции ===
   generate:
-    desc: Полная кодогенерация (sqlc + oapi-codegen)
+    desc: Полная кодогенерация (sqlc + oapi-codegen types + oapi-codegen client)
     cmds:
       - task: generate:sqlc
-      - task: generate:openapi
+      - task: generate:openapi:types
+      - task: generate:openapi:client
 
   generate:sqlc:
     desc: sqlc для SQLite и Postgres адаптеров
@@ -92,9 +93,20 @@ tasks:
       - "sqlc generate"
 
   generate:openapi:
+    desc: Alias — types + client (F5+F5b)
+    cmds:
+      - task: generate:openapi:types
+      - task: generate:openapi:client
+
+  generate:openapi:types:
     desc: oapi-codegen — генерация Go-типов из api/openapi.yaml (F5)
     cmds:
       - "go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config oapi-codegen-config.yaml api/openapi.yaml"
+
+  generate:openapi:client:
+    desc: oapi-codegen — генерация HTTP-client из api/openapi.yaml (F5b)
+    cmds:
+      - "go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config oapi-codegen-config-client.yaml api/openapi.yaml"
 
   db:up:
     desc: "Применить миграции выбранного backend (jtpost migrate db up --to <sqlite|postgres>)"

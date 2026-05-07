@@ -23,6 +23,15 @@ var listCmd = &cobra.Command{
 	Short: "Список постов",
 	Long:  `Выводит список постов с возможностью фильтрации по статусу и тегам.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Remote-mode (F5b): если задан --remote → используем apiclient.
+		apiCli, isRemote, err := newAPIClient(cmd)
+		if err != nil {
+			return err
+		}
+		if isRemote {
+			return runListRemote(cmd, apiCli)
+		}
+
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
 		cfg, err := loadConfigOrCreateDefault(configPath)

@@ -289,7 +289,7 @@ paths:
   /auth/login:
     post:
       summary: Login with email + password
-      operationId: login
+      operationId: authLogin
       tags: [auth]
       requestBody:
         required: true

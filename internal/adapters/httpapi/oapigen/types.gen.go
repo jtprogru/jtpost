@@ -457,8 +457,8 @@ type ListPostsParamsSortBy string
 // ListPostsParamsSortOrder defines parameters for ListPosts.
 type ListPostsParamsSortOrder string
 
-// LoginJSONRequestBody defines body for Login for application/json ContentType.
-type LoginJSONRequestBody = LoginRequest
+// AuthLoginJSONRequestBody defines body for AuthLogin for application/json ContentType.
+type AuthLoginJSONRequestBody = LoginRequest
 
 // CreatePostJSONRequestBody defines body for CreatePost for application/json ContentType.
 type CreatePostJSONRequestBody = CreatePostRequest

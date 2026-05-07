@@ -1,0 +1,9 @@
+# oapi-codegen client config (F5b).
+# Генерирует HTTP-client отдельно от types (которые в oapigen package, F5).
+package: apiclient
+output: internal/adapters/apiclient/client.gen.go
+generate:
+  models: true # client requires types в собственном пакете для inline structs
+  client: true
+output-options:
+  skip-prune: true

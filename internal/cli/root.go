@@ -46,6 +46,8 @@ func init() {
 	rootCmd.PersistentFlags().StringP("config", "c", ".jtpost.yaml", "путь к конфигурационному файлу")
 	rootCmd.PersistentFlags().StringP("posts-dir", "D", "", "директория с постами (переопределяет конфиг)")
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "подробный вывод")
+	rootCmd.PersistentFlags().String("remote", "", "URL удалённого jtpost API (включает remote-mode для CLI)")
+	rootCmd.PersistentFlags().String("auth", "", "Bearer token (PAT) для --remote (fallback: env JTPOST_AUTH_TOKEN)")
 
 	// Подкоманды
 	rootCmd.AddCommand(initCmd)
