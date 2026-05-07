@@ -52,6 +52,12 @@ func NewSQLitePostRepository(cfg Config) (*PostRepository, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ошибка включения foreign keys: %w", err)
 	}
+	// busy_timeout: SQLite — single-writer; без таймаута concurrent write
+	// (async session-touch + RefreshCSRF и т.п.) сразу даёт SQLITE_BUSY.
+	if _, err := db.ExecContext(context.Background(), "PRAGMA busy_timeout = 5000"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ошибка установки busy_timeout: %w", err)
+	}
 
 	if err := applyMigrations(db); err != nil {
 		_ = db.Close()
