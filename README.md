@@ -2,6 +2,8 @@
 
 CLI-редактор постов для управления контент-пайплайном (Telegram).
 
+> 🇷🇺 Русский | [🇬🇧 English](./README.en.md)
+
 [![Go Version](https://img.shields.io/badge/Go-1.25.5+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/jtprogru/jtpost)](https://goreportcard.com/report/github.com/jtprogru/jtpost)
