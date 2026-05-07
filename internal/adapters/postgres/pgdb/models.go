@@ -17,6 +17,20 @@ type OauthAccount struct {
 	CreatedAt  pgtype.Timestamptz
 }
 
+type OutboxEntry struct {
+	ID            pgtype.UUID
+	PostID        pgtype.UUID
+	TenantID      pgtype.UUID
+	Kind          string
+	Status        string
+	Attempts      int32
+	MaxAttempts   int32
+	NextAttemptAt pgtype.Timestamptz
+	LastError     string
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
 type Post struct {
 	ID             pgtype.UUID
 	TenantID       pgtype.UUID

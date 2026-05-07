@@ -7,6 +7,27 @@
 
 ## [Неопубликовано]
 
+### B.5: Worker (publisher outbox pattern)
+
+**Добавлено:**
+- **`outbox_entries` таблица** в SQLite (миграция 0005) и Postgres (миграция 0005): id, post_id, tenant_id, kind, status (pending|in_flight|done|failed), attempts, max_attempts, next_attempt_at, last_error, created_at, updated_at. Индексы (status, next_attempt_at) для poll'а и (post_id) для lookup.
+- **`core.OutboxRepository` интерфейс** с методами Enqueue, ClaimNext (атомарный UPDATE...RETURNING с подзапросом для SQLite, FOR UPDATE SKIP LOCKED для Postgres), MarkDone, MarkRetry, MarkFailed, List, GetByID.
+- **SQLite + Postgres адаптеры** через sqlc — `repo.Outbox()` facade на PostRepository.
+- **`storage.Bundle.Outbox`** добавлен в factory.
+- **`core.Worker`** с poll-loop (Run drain-pattern: вычерпывает все pending перед sleep), processOne для unit-тестов, экспоненциальный backoff (defaults [1m, 5m, 25m, 2h, 8h], max_attempts=5), `EnqueueForPublish` helper.
+- **`jtpost worker run [--interval 10s] [--max-attempts N]`** — long-running CLI с graceful shutdown по SIGTERM/Ctrl+C.
+- **`jtpost outbox enqueue <post-id>`** — поставить пост в очередь.
+- **`jtpost outbox list [--status <s>] [--limit N]`** — табличный вывод записей очереди.
+
+**Тесты:**
+- `worker_test.go` (5 тестов): processOne success / retry-then-success / permanent-fail / empty-queue + ComputeBackoff (boundary cases) + EnqueueForPublish.
+- `outbox_test.go` (5 тестов sqlite): Enqueue+GetByID, ClaimNext atomic ordering, ClaimNext respects next_attempt_at (future entries не claim'ятся), MarkDone/MarkRetry/MarkFailed (+ ErrNotFound для несуществующего id), List with filter.
+- `task test`, `task test:race`, `task build` GREEN.
+
+**Архитектура:**
+- Sync `publish` остаётся как был — outbox это альтернативный путь.
+- Single-worker MVP. Concurrency-safe для нескольких workers через per-row claim (UPDATE...RETURNING атомарно даже на SQLite, FOR UPDATE SKIP LOCKED на Postgres).
+
 ### F5d2: `--remote` для `new` и `edit` с передачей контента (extension of B.3)
 
 **Добавлено:**

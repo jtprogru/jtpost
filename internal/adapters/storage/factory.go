@@ -28,6 +28,7 @@ type Bundle struct {
 	Tokens        core.TokenRepository        // nil for fs
 	Sessions      core.SessionRepository      // nil for fs (and nil during F4b T-2 in-progress)
 	OAuthAccounts core.OAuthAccountRepository // nil for fs
+	Outbox        core.OutboxRepository       // nil for fs
 	Closer        io.Closer
 }
 
@@ -59,7 +60,7 @@ func OpenBundle(cfg *config.Config) (*Bundle, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &Bundle{Posts: repo, Users: repo.Users(), Tokens: repo.Tokens(), Sessions: repo.Sessions(), OAuthAccounts: repo.OAuthAccounts(), Closer: repo}, nil
+		return &Bundle{Posts: repo, Users: repo.Users(), Tokens: repo.Tokens(), Sessions: repo.Sessions(), OAuthAccounts: repo.OAuthAccounts(), Outbox: repo.Outbox(), Closer: repo}, nil
 	case "postgres":
 		if cfg.Storage.Postgres.DSN == "" {
 			return nil, errors.Join(core.ErrConfigInvalid, errors.New("storage.postgres.dsn required"))
@@ -73,7 +74,7 @@ func OpenBundle(cfg *config.Config) (*Bundle, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &Bundle{Posts: repo, Users: repo.Users(), Tokens: repo.Tokens(), Sessions: repo.Sessions(), OAuthAccounts: repo.OAuthAccounts(), Closer: repo}, nil
+		return &Bundle{Posts: repo, Users: repo.Users(), Tokens: repo.Tokens(), Sessions: repo.Sessions(), OAuthAccounts: repo.OAuthAccounts(), Outbox: repo.Outbox(), Closer: repo}, nil
 	default:
 		return nil, fmt.Errorf("%w: unknown storage.type %q", core.ErrConfigInvalid, cfg.Storage.Type)
 	}

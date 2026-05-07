@@ -1,0 +1,81 @@
+package core
+
+import (
+	"context"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// OutboxStatus — статус outbox-записи.
+type OutboxStatus string
+
+const (
+	OutboxStatusPending  OutboxStatus = "pending"
+	OutboxStatusInFlight OutboxStatus = "in_flight"
+	OutboxStatusDone     OutboxStatus = "done"
+	OutboxStatusFailed   OutboxStatus = "failed"
+)
+
+// OutboxKind — тип задачи.
+type OutboxKind string
+
+const OutboxKindPublish OutboxKind = "publish"
+
+// OutboxEntry — запись очереди публикации.
+type OutboxEntry struct {
+	ID            uuid.UUID
+	PostID        PostID
+	TenantID      uuid.UUID
+	Kind          OutboxKind
+	Status        OutboxStatus
+	Attempts      int
+	MaxAttempts   int
+	NextAttemptAt time.Time
+	LastError     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// OutboxFilter параметры выборки для List.
+type OutboxFilter struct {
+	Status OutboxStatus
+	Limit  int
+}
+
+// OutboxRepository интерфейс для outbox storage.
+type OutboxRepository interface {
+	Enqueue(ctx context.Context, entry *OutboxEntry) error
+	ClaimNext(ctx context.Context, now time.Time) (*OutboxEntry, error)
+	MarkDone(ctx context.Context, id uuid.UUID, now time.Time) error
+	MarkRetry(ctx context.Context, id uuid.UUID, attempts int, nextAt time.Time, errMsg string, now time.Time) error
+	MarkFailed(ctx context.Context, id uuid.UUID, errMsg string, now time.Time) error
+	List(ctx context.Context, filter OutboxFilter) ([]*OutboxEntry, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*OutboxEntry, error)
+}
+
+// DefaultBackoffSchedule — exponential schedule per attempt index (0-based).
+// Если attempts превышает len(schedule) — берём последний.
+var DefaultBackoffSchedule = []time.Duration{
+	1 * time.Minute,
+	5 * time.Minute,
+	25 * time.Minute,
+	2 * time.Hour,
+	8 * time.Hour,
+}
+
+// ComputeBackoff возвращает delay для следующей попытки. attempts — кол-во
+// уже сделанных попыток (после неуспешной).
+func ComputeBackoff(schedule []time.Duration, attempts int) time.Duration {
+	if len(schedule) == 0 {
+		return 1 * time.Minute
+	}
+	idx := attempts - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(schedule) {
+		idx = len(schedule) - 1
+	}
+	return schedule[idx]
+}

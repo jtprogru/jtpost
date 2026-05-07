@@ -69,6 +69,8 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(userCmd)
 	rootCmd.AddCommand(tokenCmd)
+	rootCmd.AddCommand(workerCmd)
+	rootCmd.AddCommand(outboxCmd)
 }
 
 func initConfig() {

@@ -17,6 +17,20 @@ type OauthAccount struct {
 	CreatedAt  string
 }
 
+type OutboxEntry struct {
+	ID            string
+	PostID        string
+	TenantID      string
+	Kind          string
+	Status        string
+	Attempts      int64
+	MaxAttempts   int64
+	NextAttemptAt string
+	LastError     string
+	CreatedAt     string
+	UpdatedAt     string
+}
+
 type Post struct {
 	ID             string
 	TenantID       string
