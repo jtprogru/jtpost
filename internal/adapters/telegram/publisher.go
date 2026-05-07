@@ -87,11 +87,14 @@ func (p *Publisher) Publish(ctx context.Context, post *core.Post) (*core.Post, e
 		caption = fmt.Sprintf("<b>%s</b>", telegramconv.EscapeHTML(post.Title))
 		followup = htmlBody
 	}
-	switch source := p.firstPhotoSource(images); source.kind {
-	case photoSourceFile:
-		msgURL, err = p.sendPhotoFile(ctx, source.path, caption)
-	case photoSourceURL:
-		msgURL, err = p.sendPhoto(ctx, source.path, caption)
+	sources := p.resolvePhotoSources(images)
+	switch {
+	case len(sources) >= 2:
+		msgURL, err = p.sendMediaGroup(ctx, sources, caption)
+	case len(sources) == 1 && sources[0].kind == photoSourceFile:
+		msgURL, err = p.sendPhotoFile(ctx, sources[0].path, caption)
+	case len(sources) == 1 && sources[0].kind == photoSourceURL:
+		msgURL, err = p.sendPhoto(ctx, sources[0].path, caption)
 	default:
 		msgURL, err = p.sendMessage(ctx, primaryHTML)
 		followup = ""
@@ -198,36 +201,61 @@ type photoSource struct {
 	path string
 }
 
-// firstPhotoSource возвращает первый image-reference, который удалось
-// разрешить либо в публичный URL (sendPhoto), либо в локальный файл (multipart).
-// Локальный файл предпочитается для приватных uploads (если UploadDir задан и
-// путь совпадает с UploadRoute) — это надёжнее, чем требовать public-доступ.
-func (p *Publisher) firstPhotoSource(imgs []MDImage) photoSource {
+// telegramMediaGroupMax — лимит Telegram на sendMediaGroup.
+const telegramMediaGroupMax = 10
+
+// resolvePhotoSources резолвит все картинки до источников (URL или файл),
+// подходящих для отправки в Telegram. Лимит — telegramMediaGroupMax (первые
+// разрешимые). Картинки, которые невозможно разрешить (relative без siteURL и
+// без UploadDir), пропускаются.
+func (p *Publisher) resolvePhotoSources(imgs []MDImage) []photoSource {
+	out := make([]photoSource, 0, len(imgs))
 	for _, im := range imgs {
-		if strings.HasPrefix(im.URL, "https://") || strings.HasPrefix(im.URL, "http://") {
-			return photoSource{photoSourceURL, im.URL}
+		if len(out) >= telegramMediaGroupMax {
+			break
 		}
-		if !strings.HasPrefix(im.URL, "/") {
-			continue
+		s := p.resolveOne(im)
+		if s.kind != photoSourceNone {
+			out = append(out, s)
 		}
-		// Local-file fallback — приоритет, если /ui/uploads/* + UploadDir задан.
-		if p.uploadDir != "" && p.uploadRoute != "" && strings.HasPrefix(im.URL, p.uploadRoute) {
-			rel := strings.TrimPrefix(im.URL, p.uploadRoute)
-			if rel != "" && !strings.Contains(rel, "..") {
-				abs, err := filepath.Abs(filepath.Join(p.uploadDir, filepath.FromSlash(rel)))
-				if err == nil {
-					rootAbs, rerr := filepath.Abs(p.uploadDir)
-					if rerr == nil && strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) {
-						if _, statErr := os.Stat(abs); statErr == nil {
-							return photoSource{photoSourceFile, abs}
-						}
+	}
+	return out
+}
+
+// resolveOne — одна картинка → photoSource (тот же приоритет, что и у
+// firstPhotoSource: absolute URL → multipart-file → siteURL-based).
+func (p *Publisher) resolveOne(im MDImage) photoSource {
+	if strings.HasPrefix(im.URL, "https://") || strings.HasPrefix(im.URL, "http://") {
+		return photoSource{photoSourceURL, im.URL}
+	}
+	if !strings.HasPrefix(im.URL, "/") {
+		return photoSource{photoSourceNone, ""}
+	}
+	if p.uploadDir != "" && p.uploadRoute != "" && strings.HasPrefix(im.URL, p.uploadRoute) {
+		rel := strings.TrimPrefix(im.URL, p.uploadRoute)
+		if rel != "" && !strings.Contains(rel, "..") {
+			abs, err := filepath.Abs(filepath.Join(p.uploadDir, filepath.FromSlash(rel)))
+			if err == nil {
+				rootAbs, rerr := filepath.Abs(p.uploadDir)
+				if rerr == nil && strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) {
+					if _, statErr := os.Stat(abs); statErr == nil {
+						return photoSource{photoSourceFile, abs}
 					}
 				}
 			}
 		}
-		// URL-based fallback через siteURL.
-		if p.siteURL != "" {
-			return photoSource{photoSourceURL, p.siteURL + im.URL}
+	}
+	if p.siteURL != "" {
+		return photoSource{photoSourceURL, p.siteURL + im.URL}
+	}
+	return photoSource{photoSourceNone, ""}
+}
+
+// firstPhotoSource — первый разрешимый источник (для одиночного sendPhoto).
+func (p *Publisher) firstPhotoSource(imgs []MDImage) photoSource {
+	for _, im := range imgs {
+		if s := p.resolveOne(im); s.kind != photoSourceNone {
+			return s
 		}
 	}
 	return photoSource{photoSourceNone, ""}
@@ -240,6 +268,100 @@ func (p *Publisher) firstResolvableImage(imgs []MDImage) string {
 		return s.path
 	}
 	return ""
+}
+
+// sendMediaGroup публикует 2..10 фото одной "галереей". Caption применяется к
+// первому элементу (как делает Telegram-клиент). Источники могут смешиваться:
+// URL-based и file-based; файлы заливаются как `attach://N`-references в одном
+// multipart-запросе. Возвращает URL первого сообщения группы.
+func (p *Publisher) sendMediaGroup(ctx context.Context, sources []photoSource, caption string) (string, error) {
+	if len(sources) < 2 {
+		return "", errors.New("media group требует минимум 2 элемента")
+	}
+	if len(sources) > telegramMediaGroupMax {
+		sources = sources[:telegramMediaGroupMax]
+	}
+	type inputMediaPhoto struct {
+		Type      string `json:"type"`
+		Media     string `json:"media"`
+		Caption   string `json:"caption,omitempty"`
+		ParseMode string `json:"parse_mode,omitempty"`
+	}
+	media := make([]inputMediaPhoto, len(sources))
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	_ = mw.WriteField("chat_id", p.channelID)
+
+	for i, s := range sources {
+		item := inputMediaPhoto{Type: "photo"}
+		if i == 0 && caption != "" {
+			item.Caption = caption
+			item.ParseMode = "HTML"
+		}
+		switch s.kind {
+		case photoSourceURL:
+			item.Media = s.path
+		case photoSourceFile:
+			attachName := fmt.Sprintf("photo%d", i)
+			item.Media = "attach://" + attachName
+			f, err := os.Open(s.path)
+			if err != nil {
+				return "", fmt.Errorf("открытие %s: %w", s.path, err)
+			}
+			fw, ferr := mw.CreateFormFile(attachName, filepath.Base(s.path))
+			if ferr != nil {
+				_ = f.Close()
+				return "", fmt.Errorf("multipart создание поля: %w", ferr)
+			}
+			if _, cerr := io.Copy(fw, f); cerr != nil {
+				_ = f.Close()
+				return "", fmt.Errorf("multipart копирование: %w", cerr)
+			}
+			_ = f.Close()
+		default:
+			return "", fmt.Errorf("неподдерживаемый source kind=%d", s.kind)
+		}
+		media[i] = item
+	}
+	mediaJSON, err := json.Marshal(media)
+	if err != nil {
+		return "", fmt.Errorf("сериализация media: %w", err)
+	}
+	_ = mw.WriteField("media", string(mediaJSON))
+	if err := mw.Close(); err != nil {
+		return "", fmt.Errorf("multipart close: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("%s%s/sendMediaGroup", p.baseURL, p.botToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, body)
+	if err != nil {
+		return "", fmt.Errorf("создание запроса: %w", err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("HTTP запрос: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("чтение ответа: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API вернул ошибку: %s", string(respBody))
+	}
+	var result struct {
+		OK     bool              `json:"ok"`
+		Result []telegramMessage `json:"result"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("десериализация ответа: %w", err)
+	}
+	if !result.OK || len(result.Result) == 0 {
+		return "", errors.New("API вернул ok=false или пустой массив")
+	}
+	channelName := strings.TrimPrefix(p.channelID, "-100")
+	return fmt.Sprintf("https://t.me/%s/%d", channelName, result.Result[0].MessageID), nil
 }
 
 // sendPhotoFile отправляет фото из локального файла через multipart/form-data.

@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +37,10 @@ func newFakeTG(t *testing.T) *fakeTGServer {
 		f.lastPayload = nil
 		_ = json.Unmarshal(body, &f.lastPayload)
 		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/sendMediaGroup") {
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"message_id":42,"chat":{"id":-1001234567890,"username":"chan"}},{"message_id":43,"chat":{"id":-1001234567890,"username":"chan"}}]}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":42,"chat":{"id":-1001234567890,"username":"chan"}}}`))
 	}))
 	t.Cleanup(f.Close)
@@ -215,6 +220,91 @@ func TestPublish_PrivateUpload_TraversalRejected(t *testing.T) {
 	// Traversal не должен пройти — fallback к sendMessage.
 	if !strings.HasSuffix(tg.lastPath, "/sendMessage") {
 		t.Errorf("traversal должен fallback в sendMessage; got %s", tg.lastPath)
+	}
+}
+
+func TestPublish_MultipleImages_UsesMediaGroup(t *testing.T) {
+	t.Parallel()
+	p, tg := newTestPublisher(t, "")
+	post := &core.Post{
+		ID:    mustParsePostID("a"),
+		Title: "Trip",
+		Content: "Day 1 ![](https://x/a.jpg) and ![](https://x/b.jpg) and ![](https://x/c.jpg)",
+	}
+	if _, err := p.Publish(context.Background(), post); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if !strings.HasSuffix(tg.lastPath, "/sendMediaGroup") {
+		t.Errorf("expected sendMediaGroup, got %s", tg.lastPath)
+	}
+	if !strings.HasPrefix(tg.lastContentType, "multipart/form-data") {
+		t.Errorf("expected multipart, got %q", tg.lastContentType)
+	}
+	body := string(tg.lastRawBody)
+	for _, want := range []string{"a.jpg", "b.jpg", "c.jpg", "Trip"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q", want)
+		}
+	}
+}
+
+func TestPublish_MediaGroup_LimitTo10(t *testing.T) {
+	t.Parallel()
+	p, tg := newTestPublisher(t, "")
+	var sb strings.Builder
+	for i := range 12 {
+		fmt.Fprintf(&sb, "![](https://x/%d.jpg) ", i)
+	}
+	post := &core.Post{ID: mustParsePostID("a"), Title: "Many", Content: sb.String()}
+	if _, err := p.Publish(context.Background(), post); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	body := string(tg.lastRawBody)
+	// Должны попасть 0..9, НЕ должны 10, 11.
+	if !strings.Contains(body, "9.jpg") {
+		t.Error("9.jpg должен быть в body")
+	}
+	if strings.Contains(body, "10.jpg") || strings.Contains(body, "11.jpg") {
+		t.Error("10.jpg/11.jpg выходят за лимит 10 и не должны передаваться")
+	}
+}
+
+func TestPublish_MediaGroup_MixedSources(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "2026"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "2026", "local.png"), []byte("fakebytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tg := newFakeTG(t)
+	p := NewPublisher(Config{
+		BotToken: "tok", ChannelID: "-1001234567890",
+		UploadDir: dir, UploadRoute: "/ui/uploads/",
+	})
+	p.baseURL = tg.URL + "/bot"
+
+	post := &core.Post{
+		ID:      mustParsePostID("a"),
+		Title:   "Mix",
+		Content: "![](https://x/remote.jpg) plus ![](/ui/uploads/2026/local.png)",
+	}
+	if _, err := p.Publish(context.Background(), post); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if !strings.HasSuffix(tg.lastPath, "/sendMediaGroup") {
+		t.Errorf("expected sendMediaGroup, got %s", tg.lastPath)
+	}
+	body := string(tg.lastRawBody)
+	if !strings.Contains(body, "remote.jpg") {
+		t.Error("remote URL должен быть в media JSON")
+	}
+	if !strings.Contains(body, "attach://photo1") {
+		t.Error("local-файл должен быть как attach://photoN reference")
+	}
+	if !strings.Contains(body, "local.png") {
+		t.Error("multipart часть с local.png должна присутствовать")
 	}
 }
 
