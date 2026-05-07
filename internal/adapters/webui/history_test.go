@@ -12,14 +12,20 @@ import (
 )
 
 type stubHistory struct {
-	entries []core.HistoryEntry
-	err     error
-	called  int
+	entries  []core.HistoryEntry
+	err      error
+	called   int
+	fileBody []byte
+	fileErr  error
 }
 
 func (s *stubHistory) History(_ context.Context, _ *core.Post, _ int) ([]core.HistoryEntry, error) {
 	s.called++
 	return s.entries, s.err
+}
+
+func (s *stubHistory) FileAtCommit(_ context.Context, _ *core.Post, _ string) ([]byte, error) {
+	return s.fileBody, s.fileErr
 }
 
 func newHistoryHandler(t *testing.T, hp core.HistoryProvider, posts ...*core.Post) *Handler {
@@ -89,6 +95,65 @@ func TestUI_PostHistory_NotFound(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status=%d, want 404", rec.Code)
+	}
+}
+
+func TestUI_PostRevision_RendersContent(t *testing.T) {
+	t.Parallel()
+	post := samplePost("Cat", core.StatusReady)
+	hp := &stubHistory{fileBody: []byte("---\ntitle: Old\n---\n\nold content")}
+	h := newHistoryHandler(t, hp, post)
+	req := httptest.NewRequest(http.MethodGet, "/ui/posts/"+post.ID.String()+"/history/abc12345def", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"abc12345", "old content", "Old", "title:"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q", want)
+		}
+	}
+}
+
+func TestUI_PostRevision_NoProvider_503(t *testing.T) {
+	t.Parallel()
+	post := samplePost("X", core.StatusDraft)
+	h := newHistoryHandler(t, nil, post)
+	req := httptest.NewRequest(http.MethodGet, "/ui/posts/"+post.ID.String()+"/history/abcdef12", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status=%d, want 503", rec.Code)
+	}
+}
+
+func TestUI_PostRevision_HashNotFound(t *testing.T) {
+	t.Parallel()
+	post := samplePost("X", core.StatusDraft)
+	hp := &stubHistory{fileErr: core.ErrNotFound}
+	h := newHistoryHandler(t, hp, post)
+	req := httptest.NewRequest(http.MethodGet, "/ui/posts/"+post.ID.String()+"/history/deadbeef", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status=%d, want 404", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "не найдена") {
+		t.Error("expected not-found message")
+	}
+}
+
+func TestUI_PostRevision_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+	post := samplePost("X", core.StatusDraft)
+	h := newHistoryHandler(t, &stubHistory{}, post)
+	req := httptest.NewRequest(http.MethodPost, "/ui/posts/"+post.ID.String()+"/history/abc12345", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status=%d, want 405", rec.Code)
 	}
 }
 

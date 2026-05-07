@@ -42,6 +42,17 @@ func (h *Handler) handlePostByID(w http.ResponseWriter, r *http.Request) {
 		h.handlePostHistory(w, r, parsed)
 		return
 	}
+	// /ui/posts/{id}/history/{hash}
+	if hash, ok := extractRevisionHash(rest); ok {
+		idStr := strings.TrimSuffix(rest, "/history/"+hash)
+		parsed, err := core.ParsePostID(idStr)
+		if err != nil {
+			http.Error(w, "invalid post id", http.StatusBadRequest)
+			return
+		}
+		h.handlePostRevision(w, r, parsed, hash)
+		return
+	}
 	if strings.Contains(rest, "/") {
 		http.NotFound(w, r)
 		return

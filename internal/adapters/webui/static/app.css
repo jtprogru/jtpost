@@ -500,6 +500,15 @@ textarea.drop-active {
     .cal__item { font-size: 0.7rem; }
 }
 
+/* Revision view */
+.revision-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 75vh;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.85rem;
+}
+
 /* Audit page */
 .audit-table td:first-child { font-family: ui-monospace, monospace; font-size: 0.85rem; white-space: nowrap; }
 .audit-outcome {

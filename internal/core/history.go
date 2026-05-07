@@ -21,4 +21,8 @@ type HistoryEntry struct {
 // этот интерфейс не реализует — webui-handler ответит 503.
 type HistoryProvider interface {
 	History(ctx context.Context, post *Post, limit int) ([]HistoryEntry, error)
+	// FileAtCommit возвращает сырое содержимое файла поста в указанной ревизии
+	// (commit hash полный или короткий). ErrNotFound — если файл не существовал
+	// в этом коммите или коммит не найден.
+	FileAtCommit(ctx context.Context, post *Post, commitHash string) ([]byte, error)
 }

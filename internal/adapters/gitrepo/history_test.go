@@ -84,6 +84,82 @@ func TestGitDecorator_History_RespectsLimit(t *testing.T) {
 	}
 }
 
+func TestGitDecorator_FileAtCommit_FullAndShortHash(t *testing.T) {
+	d, _ := newDecorator(t, config.GitStorageConfig{Enabled: true, AutoCommit: true})
+	defer func() { _ = d.Close() }()
+
+	post := mkPost("revfile")
+	ctx := context.Background()
+	if err := d.Create(ctx, post); err != nil {
+		t.Fatal(err)
+	}
+	post.Title = "v2"
+	if err := d.Update(ctx, post); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := d.History(ctx, post, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) < 2 {
+		t.Fatalf("need 2+ commits, got %d", len(entries))
+	}
+
+	// Полный hash самого старого коммита (create) — должен дать v1 (T-revfile).
+	oldCommit := entries[len(entries)-1]
+	bodyFull, err := d.FileAtCommit(ctx, post, oldCommit.Hash)
+	if err != nil {
+		t.Fatalf("file at full hash: %v", err)
+	}
+	if !contains(bodyFull, "T-revfile") {
+		t.Errorf("expected T-revfile in old content, got %q", string(bodyFull))
+	}
+
+	// Короткий hash тоже должен сработать.
+	bodyShort, err := d.FileAtCommit(ctx, post, oldCommit.ShortHash)
+	if err != nil {
+		t.Fatalf("file at short hash: %v", err)
+	}
+	if string(bodyShort) != string(bodyFull) {
+		t.Error("short hash должен резолвиться в тот же коммит, что и полный")
+	}
+}
+
+func TestGitDecorator_FileAtCommit_NotFound(t *testing.T) {
+	d, _ := newDecorator(t, config.GitStorageConfig{Enabled: true, AutoCommit: true})
+	defer func() { _ = d.Close() }()
+
+	post := mkPost("nf")
+	if err := d.Create(context.Background(), post); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.FileAtCommit(context.Background(), post, "abc12345abc12345abc12345abc12345abc12345"); err == nil {
+		t.Error("expected error for non-existent commit hash")
+	}
+}
+
+func TestGitDecorator_FileAtCommit_InvalidHash(t *testing.T) {
+	d, _ := newDecorator(t, config.GitStorageConfig{Enabled: true})
+	defer func() { _ = d.Close() }()
+	post := mkPost("x")
+	if _, err := d.FileAtCommit(context.Background(), post, "abc"); err == nil {
+		t.Error("expected error for too-short hash")
+	}
+}
+
+func contains(haystack []byte, needle string) bool {
+	return len(haystack) > 0 && stringContains(string(haystack), needle)
+}
+
+func stringContains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGitDecorator_History_NilPost(t *testing.T) {
 	d, _ := newDecorator(t, config.GitStorageConfig{Enabled: true})
 	defer func() { _ = d.Close() }()

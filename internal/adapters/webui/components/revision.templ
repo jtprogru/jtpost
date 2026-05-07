@@ -1,0 +1,35 @@
+package components
+
+import (
+	"github.com/jtprogru/jtpost/internal/core"
+)
+
+// RevisionProps — данные для страницы просмотра ревизии файла поста.
+type RevisionProps struct {
+	Post       *core.Post
+	Hash       string // user-provided (может быть короткий)
+	ShortHash  string // 8 символов
+	Content    string // raw содержимое файла на ревизии
+	UserEmail  string
+	NotFound   bool   // true → ревизия не найдена
+	ErrMessage string // сообщение об ошибке (внутреннее, не not-found)
+}
+
+templ Revision(p RevisionProps) {
+	@Layout(LayoutProps{Title: "Revision " + p.ShortHash, ActiveNav: "dashboard", UserEmail: p.UserEmail}) {
+		<div class="post-edit__header">
+			<a href={ templ.URL("/ui/posts/" + p.Post.ID.String() + "/history") } class="post-edit__back">← History</a>
+			<h1>Ревизия <code>{ p.ShortHash }</code></h1>
+			<div class="post-edit__meta">
+				<span>{ p.Post.Title }</span>
+			</div>
+		</div>
+		if p.NotFound {
+			<div class="empty">Ревизия не найдена.</div>
+		} else if p.ErrMessage != "" {
+			<div class="form-error">{ p.ErrMessage }</div>
+		} else {
+			<pre class="md-preview revision-content">{ p.Content }</pre>
+		}
+	}
+}

@@ -37,7 +37,11 @@ templ History(p HistoryProps) {
 						<tr>
 							<td>{ e.At.Format("2006-01-02 15:04") }</td>
 							<td>{ e.Author }</td>
-							<td><code>{ e.ShortHash }</code></td>
+							<td>
+								<a href={ templ.URL("/ui/posts/" + p.Post.ID.String() + "/history/" + e.Hash) }>
+									<code>{ e.ShortHash }</code>
+								</a>
+							</td>
 							<td>{ e.Message }</td>
 						</tr>
 					}
