@@ -1,18 +1,19 @@
 package fsrepo
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/core"
-	"gopkg.in/yaml.v3"
 )
 
 // FileSystemPostRepository реализация PostRepository на основе файловой системы.
+// Посты хранятся в подкаталогах: <rootPath>/<tenant_short_id>/<slug>.md.
 type FileSystemPostRepository struct {
 	rootPath string
 }
@@ -33,15 +34,15 @@ func NewFileSystemRepository(rootPath string) (*FileSystemPostRepository, error)
 	}, nil
 }
 
-// GetByID возвращает пост по идентификатору.
+// GetByID возвращает пост по идентификатору в рамках tenant'а из контекста.
 func (r *FileSystemPostRepository) GetByID(ctx context.Context, id core.PostID) (*core.Post, error) {
-	// Ищем файл по ID в названии
-	filePath, err := r.findFileByID(id)
-	if err != nil {
-		return nil, err
+	tenantID, ok := core.TenantFromContext(ctx)
+	if !ok {
+		return nil, core.ErrTenantMismatch
 	}
 
-	data, err := os.ReadFile(filePath)
+	subdir := r.tenantSubdir(tenantID)
+	entries, err := os.ReadDir(subdir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, core.ErrNotFound
@@ -49,19 +50,41 @@ func (r *FileSystemPostRepository) GetByID(ctx context.Context, id core.PostID) 
 		return nil, err
 	}
 
-	post, err := ParsePost(data)
-	if err != nil {
-		return nil, err
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+
+		filePath := filepath.Join(subdir, entry.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+
+		post, err := ParsePost(data)
+		if err != nil {
+			continue
+		}
+
+		if post.ID == id {
+			if post.TenantID != tenantID {
+				return nil, core.ErrNotFound
+			}
+			return post, nil
+		}
 	}
 
-	post.ID = id
-	return post, nil
+	return nil, core.ErrNotFound
 }
 
-// GetBySlug возвращает пост по slug.
+// GetBySlug возвращает пост по slug в рамках tenant'а из контекста.
 func (r *FileSystemPostRepository) GetBySlug(ctx context.Context, slug string) (*core.Post, error) {
-	filePath := filepath.Join(r.rootPath, slug+".md")
+	tenantID, ok := core.TenantFromContext(ctx)
+	if !ok {
+		return nil, core.ErrTenantMismatch
+	}
 
+	filePath := filepath.Join(r.tenantSubdir(tenantID), slug+".md")
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -75,13 +98,29 @@ func (r *FileSystemPostRepository) GetBySlug(ctx context.Context, slug string) (
 		return nil, err
 	}
 
+	if post.TenantID != tenantID {
+		return nil, core.ErrNotFound
+	}
+
 	return post, nil
 }
 
-// List возвращает список постов с применением фильтров.
-func (r *FileSystemPostRepository) List(ctx context.Context, filter core.PostFilter) ([]*core.Post, error) {
-	entries, err := os.ReadDir(r.rootPath)
+// List возвращает список постов с применением фильтров и пагинации.
+func (r *FileSystemPostRepository) List(_ context.Context, filter core.PostFilter) ([]*core.Post, error) {
+	if filter.TenantID == uuid.Nil {
+		return nil, fmt.Errorf("%w: tenant_id required", core.ErrValidation)
+	}
+
+	if filter.SortBy != "" && !core.IsValidSortKey(filter.SortBy) {
+		return nil, fmt.Errorf("%w: invalid sort key %q", core.ErrValidation, filter.SortBy)
+	}
+
+	subdir := r.tenantSubdir(filter.TenantID)
+	entries, err := os.ReadDir(subdir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return []*core.Post{}, nil
+		}
 		return nil, err
 	}
 
@@ -92,18 +131,21 @@ func (r *FileSystemPostRepository) List(ctx context.Context, filter core.PostFil
 			continue
 		}
 
-		filePath := filepath.Join(r.rootPath, entry.Name())
+		filePath := filepath.Join(subdir, entry.Name())
 		data, err := os.ReadFile(filePath)
 		if err != nil {
-			continue // Пропускаем проблемные файлы
+			continue
 		}
 
 		post, err := ParsePost(data)
 		if err != nil {
-			continue // Пропускаем файлы с ошибками парсинга
+			continue
 		}
 
-		// Применяем фильтры
+		if post.TenantID != filter.TenantID {
+			continue
+		}
+
 		if !matchesFilter(post, filter) {
 			continue
 		}
@@ -111,14 +153,24 @@ func (r *FileSystemPostRepository) List(ctx context.Context, filter core.PostFil
 		posts = append(posts, post)
 	}
 
+	applySort(posts, filter.SortBy, filter.SortOrder)
+	posts = applyPaging(posts, filter.Offset, filter.Limit)
+
+	if posts == nil {
+		posts = []*core.Post{}
+	}
+
 	return posts, nil
 }
 
 // Create создаёт новый пост.
-func (r *FileSystemPostRepository) Create(ctx context.Context, post *core.Post) error {
-	filePath := r.buildFilePath(post)
+func (r *FileSystemPostRepository) Create(_ context.Context, post *core.Post) error {
+	filePath := r.postPath(post)
 
-	// Проверяем, существует ли уже файл
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		return fmt.Errorf("ошибка создания директории: %w", err)
+	}
+
 	if _, err := os.Stat(filePath); err == nil {
 		return core.ErrAlreadyExists
 	}
@@ -132,10 +184,9 @@ func (r *FileSystemPostRepository) Create(ctx context.Context, post *core.Post) 
 }
 
 // Update обновляет существующий пост.
-func (r *FileSystemPostRepository) Update(ctx context.Context, post *core.Post) error {
-	filePath := r.buildFilePath(post)
+func (r *FileSystemPostRepository) Update(_ context.Context, post *core.Post) error {
+	filePath := r.postPath(post)
 
-	// Проверяем, существует ли файл
 	if _, err := os.Stat(filePath); err != nil {
 		if os.IsNotExist(err) {
 			return core.ErrNotFound
@@ -151,22 +202,20 @@ func (r *FileSystemPostRepository) Update(ctx context.Context, post *core.Post) 
 	return os.WriteFile(filePath, data, 0o644)
 }
 
-// Delete удаляет пост.
+// Delete удаляет пост по ID в рамках tenant'а из контекста.
 func (r *FileSystemPostRepository) Delete(ctx context.Context, id core.PostID) error {
-	filePath, err := r.findFileByID(id)
-	if err != nil {
-		return err
+	tenantID, ok := core.TenantFromContext(ctx)
+	if !ok {
+		return core.ErrTenantMismatch
 	}
 
-	return os.Remove(filePath)
-}
-
-// findFileByID ищет файл поста по ID.
-// Поскольку файлы именуются по slug, мы читаем каждый файл и проверяем ID.
-func (r *FileSystemPostRepository) findFileByID(id core.PostID) (string, error) {
-	entries, err := os.ReadDir(r.rootPath)
+	subdir := r.tenantSubdir(tenantID)
+	entries, err := os.ReadDir(subdir)
 	if err != nil {
-		return "", err
+		if os.IsNotExist(err) {
+			return core.ErrNotFound
+		}
+		return err
 	}
 
 	for _, entry := range entries {
@@ -174,7 +223,7 @@ func (r *FileSystemPostRepository) findFileByID(id core.PostID) (string, error) 
 			continue
 		}
 
-		filePath := filepath.Join(r.rootPath, entry.Name())
+		filePath := filepath.Join(subdir, entry.Name())
 		data, err := os.ReadFile(filePath)
 		if err != nil {
 			continue
@@ -186,22 +235,38 @@ func (r *FileSystemPostRepository) findFileByID(id core.PostID) (string, error) 
 		}
 
 		if post.ID == id {
-			return filePath, nil
+			if post.TenantID != tenantID {
+				return core.ErrNotFound
+			}
+			return os.Remove(filePath)
 		}
 	}
 
-	return "", core.ErrNotFound
+	return core.ErrNotFound
 }
 
-// buildFilePath строит путь к файлу поста.
-func (r *FileSystemPostRepository) buildFilePath(post *core.Post) string {
-	filename := fmt.Sprintf("%s.md", post.Slug)
-	return filepath.Join(r.rootPath, filename)
+// postPath возвращает путь к файлу поста с учётом tenant subdir.
+func (r *FileSystemPostRepository) postPath(post *core.Post) string {
+	return filepath.Join(r.rootPath, post.TenantShortID(), post.Slug+".md")
 }
 
-// matchesFilter проверяет, соответствует ли пост фильтрам.
+// tenantSubdir возвращает путь к подкаталогу tenant'а.
+func (r *FileSystemPostRepository) tenantSubdir(tenantID uuid.UUID) string {
+	short := strings.ReplaceAll(tenantID.String(), "-", "")
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	return filepath.Join(r.rootPath, short)
+}
+
+// matchesFilter проверяет, соответствует ли пост фильтрам (без tenant — он применён выше).
 func matchesFilter(post *core.Post, filter core.PostFilter) bool {
-	// Фильтр по статусам
+	// AuthorID
+	if filter.AuthorID != nil && post.AuthorID != *filter.AuthorID {
+		return false
+	}
+
+	// Statuses (AND ⇒ at least one match in filter set)
 	if len(filter.Statuses) > 0 {
 		found := false
 		for _, s := range filter.Statuses {
@@ -215,7 +280,7 @@ func matchesFilter(post *core.Post, filter core.PostFilter) bool {
 		}
 	}
 
-	// Фильтр по тегам
+	// Tags (OR, case-insensitive)
 	if len(filter.Tags) > 0 {
 		tagSet := make(map[string]bool)
 		for _, t := range post.Tags {
@@ -233,7 +298,7 @@ func matchesFilter(post *core.Post, filter core.PostFilter) bool {
 		}
 	}
 
-	// Поиск по заголовку/slug
+	// Search в title/slug
 	if filter.Search != "" {
 		search := strings.ToLower(filter.Search)
 		if !strings.Contains(strings.ToLower(post.Title), search) &&
@@ -245,51 +310,71 @@ func matchesFilter(post *core.Post, filter core.PostFilter) bool {
 	return true
 }
 
-// ParsePost парсит Markdown файл с YAML frontmatter.
-func ParsePost(data []byte) (*core.Post, error) {
-	// Разделяем frontmatter и контент
-	content := bytes.TrimPrefix(data, []byte("---\n"))
-	parts := bytes.SplitN(content, []byte("\n---\n"), 2)
-
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("неверный формат frontmatter: ожидается --- ... ---")
+// applySort сортирует посты согласно sortBy/sortOrder. SortBy уже провалидирован.
+func applySort(posts []*core.Post, sortBy, sortOrder string) {
+	if sortBy == "" {
+		return
 	}
 
-	frontmatter := parts[0]
-	var body []byte
-	if len(parts) > 1 {
-		body = parts[1]
+	desc := sortOrder == "desc"
+
+	less := func(i, j int) bool { return false }
+	switch sortBy {
+	case "created_at":
+		less = func(i, j int) bool { return posts[i].CreatedAt.Before(posts[j].CreatedAt) }
+	case "updated_at":
+		less = func(i, j int) bool { return posts[i].UpdatedAt.Before(posts[j].UpdatedAt) }
+	case "deadline":
+		less = func(i, j int) bool {
+			if posts[i].Deadline == nil && posts[j].Deadline == nil {
+				return false
+			}
+			if posts[i].Deadline == nil {
+				return false
+			}
+			if posts[j].Deadline == nil {
+				return true
+			}
+			return posts[i].Deadline.Before(*posts[j].Deadline)
+		}
+	case "scheduled_at":
+		less = func(i, j int) bool {
+			if posts[i].ScheduledAt == nil && posts[j].ScheduledAt == nil {
+				return false
+			}
+			if posts[i].ScheduledAt == nil {
+				return false
+			}
+			if posts[j].ScheduledAt == nil {
+				return true
+			}
+			return posts[i].ScheduledAt.Before(*posts[j].ScheduledAt)
+		}
+	case "title":
+		less = func(i, j int) bool { return posts[i].Title < posts[j].Title }
+	case "status":
+		less = func(i, j int) bool { return string(posts[i].Status) < string(posts[j].Status) }
 	}
 
-	var post core.Post
-	if err := yaml.Unmarshal(frontmatter, &post); err != nil {
-		return nil, fmt.Errorf("ошибка парсинга YAML: %w", err)
-	}
-
-	post.Content = strings.TrimSpace(string(body))
-
-	// Инициализируем пустые слайсы
-	if post.Tags == nil {
-		post.Tags = []string{}
-	}
-
-	return &post, nil
+	sort.SliceStable(posts, func(i, j int) bool {
+		if desc {
+			return less(j, i)
+		}
+		return less(i, j)
+	})
 }
 
-// SerializePost сериализует пост в Markdown с YAML frontmatter.
-func SerializePost(post *core.Post) ([]byte, error) {
-	var buf bytes.Buffer
-
-	buf.WriteString("---\n")
-	encoder := yaml.NewEncoder(&buf)
-	encoder.SetIndent(2)
-	if err := encoder.Encode(post); err != nil {
-		return nil, err
+// applyPaging применяет Offset и Limit.
+func applyPaging(posts []*core.Post, offset, limit int) []*core.Post {
+	if offset < 0 {
+		offset = 0
 	}
-	encoder.Close()
-
-	buf.WriteString("---\n\n")
-	buf.WriteString(post.Content)
-
-	return buf.Bytes(), nil
+	if offset >= len(posts) {
+		return []*core.Post{}
+	}
+	posts = posts[offset:]
+	if limit > 0 && limit < len(posts) {
+		posts = posts[:limit]
+	}
+	return posts
 }

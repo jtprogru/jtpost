@@ -8,336 +8,387 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/core"
 )
 
-func TestFileSystemPostRepository_CreateAndGetByID(t *testing.T) {
-	dir := t.TempDir()
+func tenantCtx(tenantID uuid.UUID) context.Context {
+	return core.WithTenant(context.Background(), tenantID)
+}
 
+func TestFSRepo_Create_TenantSubdir(t *testing.T) {
+	dir := t.TempDir()
 	repo, err := NewFileSystemRepository(dir)
 	if err != nil {
-		t.Fatalf("Failed to create repository: %v", err)
+		t.Fatalf("NewFileSystemRepository() error = %v", err)
 	}
 
-	now := time.Now()
-	post := &core.Post{
-		ID:        mustParsePostID("test-id-123"),
-		Title:     "Test Post",
-		Slug:      "test-post",
-		Status:    core.StatusDraft,
-		Tags:      []string{"test", "go"},
-		Deadline:  &now,
-		Content:   "Test content",
-	}
+	post := newTestPost(t, func(p *core.Post) {
+		p.ID = mustParsePostID("subdir-1")
+		p.Slug = "subdir-post"
+	})
 
-	ctx := context.Background()
-
-	// Create
-	if err := repo.Create(ctx, post); err != nil {
+	if err := repo.Create(tenantCtx(testTenant1), post); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	// GetByID - ID теперь сохраняется в файле
-	got, err := repo.GetByID(ctx, post.ID)
-	if err != nil {
-		t.Fatalf("GetByID() error = %v", err)
-	}
-
-	if got.Title != post.Title {
-		t.Errorf("Title = %v, want %v", got.Title, post.Title)
-	}
-	if got.Slug != post.Slug {
-		t.Errorf("Slug = %v, want %v", got.Slug, post.Slug)
-	}
-	if got.Status != post.Status {
-		t.Errorf("Status = %v, want %v", got.Status, post.Status)
-	}
-	if len(got.Tags) != len(post.Tags) {
-		t.Errorf("Tags length = %v, want %v", len(got.Tags), len(post.Tags))
+	expected := filepath.Join(dir, post.TenantShortID(), "subdir-post.md")
+	if _, err := os.Stat(expected); err != nil {
+		t.Errorf("expected file at %s, got error: %v", expected, err)
 	}
 }
 
-func TestFileSystemPostRepository_List(t *testing.T) {
+func TestFSRepo_GetByID_OtherTenant_NotFound(t *testing.T) {
+	// Property: CP-1
 	dir := t.TempDir()
-
 	repo, err := NewFileSystemRepository(dir)
 	if err != nil {
-		t.Fatalf("Failed to create repository: %v", err)
+		t.Fatalf("NewFileSystemRepository() error = %v", err)
 	}
 
-	ctx := context.Background()
-
-	// Создаём несколько постов
-	posts := []*core.Post{
-		{
-			ID:      mustParsePostID("1"),
-			Title:   "Post 1",
-			Slug:    "post-1",
-			Status:  core.StatusDraft,
-			Tags:    []string{"go"},
-			Content: "Content 1",
-		},
-		{
-			ID:      mustParsePostID("2"),
-			Title:   "Post 2",
-			Slug:    "post-2",
-			Status:  core.StatusReady,
-			Tags:    []string{"telegram"},
-			Content: "Content 2",
-		},
-		{
-			ID:      mustParsePostID("3"),
-			Title:   "Post 3",
-			Slug:    "post-3",
-			Status:  core.StatusDraft,
-			Tags:    []string{"go", "cli"},
-			Content: "Content 3",
-		},
-	}
-
-	for _, p := range posts {
-		if err := repo.Create(ctx, p); err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-	}
-
-	tests := []struct {
-		name       string
-		filter     core.PostFilter
-		wantLength int
-	}{
-		{"no filter", core.PostFilter{}, 3},
-		{"filter by status draft", core.PostFilter{Statuses: []core.PostStatus{core.StatusDraft}}, 2},
-		{"filter by status ready", core.PostFilter{Statuses: []core.PostStatus{core.StatusReady}}, 1},
-		{"filter by tag go", core.PostFilter{Tags: []string{"go"}}, 2},
-		{"filter by search", core.PostFilter{Search: "Post 1"}, 1},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := repo.List(ctx, tt.filter)
-			if err != nil {
-				t.Errorf("List() error = %v", err)
-				return
-			}
-			if len(got) != tt.wantLength {
-				t.Errorf("List() length = %v, want %v", len(got), tt.wantLength)
-			}
-		})
-	}
-}
-
-func TestFileSystemPostRepository_Update(t *testing.T) {
-	dir := t.TempDir()
-
-	repo, err := NewFileSystemRepository(dir)
-	if err != nil {
-		t.Fatalf("Failed to create repository: %v", err)
-	}
-
-	ctx := context.Background()
-
-	post := &core.Post{
-		ID:        mustParsePostID("test-id"),
-		Title:     "Original Title",
-		Slug:      "original-title",
-		Status:    core.StatusIdea,
-		Content:   "Original content",
-	}
-
-	if err := repo.Create(ctx, post); err != nil {
+	post := newTestPost(t, func(p *core.Post) {
+		p.ID = mustParsePostID("other-tenant-id")
+		p.Slug = "other-tenant-post"
+		p.TenantID = testTenant1
+	})
+	if err := repo.Create(tenantCtx(testTenant1), post); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	// Update
-	post.Title = "Updated Title"
-	post.Status = core.StatusDraft
-	post.Content = "Updated content"
-
-	if err := repo.Update(ctx, post); err != nil {
-		t.Fatalf("Update() error = %v", err)
-	}
-
-	// Verify
-	got, err := repo.GetByID(ctx, post.ID)
-	if err != nil {
-		t.Fatalf("GetByID() error = %v", err)
-	}
-
-	if got.Title != "Updated Title" {
-		t.Errorf("Title = %v, want Updated Title", got.Title)
-	}
-	if got.Status != core.StatusDraft {
-		t.Errorf("Status = %v, want draft", got.Status)
-	}
-	if got.Content != "Updated content" {
-		t.Errorf("Content = %v, want Updated content", got.Content)
-	}
-}
-
-func TestFileSystemPostRepository_Delete(t *testing.T) {
-	dir := t.TempDir()
-
-	repo, err := NewFileSystemRepository(dir)
-	if err != nil {
-		t.Fatalf("Failed to create repository: %v", err)
-	}
-
-	ctx := context.Background()
-
-	post := &core.Post{
-		ID:        mustParsePostID("test-id"),
-		Title:     "To Delete",
-		Slug:      "to-delete",
-		Status:    core.StatusIdea,
-		Content:   "Content",
-	}
-
-	if err := repo.Create(ctx, post); err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-
-	// Delete
-	if err := repo.Delete(ctx, post.ID); err != nil {
-		t.Fatalf("Delete() error = %v", err)
-	}
-
-	// Verify deleted - второй Delete должен вернуть ErrNotFound
-	err = repo.Delete(ctx, post.ID)
-	if err == nil {
-		t.Errorf("Delete() после удаления expected error, got nil")
-	} else if !errors.Is(err, core.ErrNotFound) {
-		t.Errorf("Delete() после удаления error = %v, want ErrNotFound", err)
-	}
-
-	_, err = repo.GetByID(ctx, post.ID)
-	if err == nil {
-		t.Errorf("GetByID() after delete expected error, got nil")
-	} else if !errors.Is(err, core.ErrNotFound) {
-		t.Errorf("GetByID() after delete error = %v, want ErrNotFound", err)
-	}
-}
-
-func TestFileSystemPostRepository_GetByID_NotFound(t *testing.T) {
-	dir := t.TempDir()
-
-	repo, err := NewFileSystemRepository(dir)
-	if err != nil {
-		t.Fatalf("Failed to create repository: %v", err)
-	}
-
-	ctx := context.Background()
-
-	_, err = repo.GetByID(ctx, mustParsePostID("non-existent-id"))
-	if err == nil {
-		t.Errorf("GetByID() error = nil, want ErrNotFound")
-	} else if !errors.Is(err, core.ErrNotFound) {
+	_, err = repo.GetByID(tenantCtx(testTenant2), post.ID)
+	if !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("GetByID() error = %v, want ErrNotFound", err)
 	}
 }
 
-func TestFileSystemPostRepository_Create_AlreadyExists(t *testing.T) {
+func TestFSRepo_GetByID_NoContext_TenantMismatch(t *testing.T) {
 	dir := t.TempDir()
-
 	repo, err := NewFileSystemRepository(dir)
 	if err != nil {
-		t.Fatalf("Failed to create repository: %v", err)
+		t.Fatalf("NewFileSystemRepository() error = %v", err)
 	}
 
-	ctx := context.Background()
+	_, err = repo.GetByID(context.Background(), mustParsePostID("any"))
+	if !errors.Is(err, core.ErrTenantMismatch) {
+		t.Errorf("GetByID() without tenant error = %v, want ErrTenantMismatch", err)
+	}
+}
 
-	post := &core.Post{
-		ID:        mustParsePostID("test-id"),
-		Title:     "Test",
-		Slug:      "test",
-		Status:    core.StatusIdea,
-		Content:   "Content",
+func TestFSRepo_List_TenantScoped(t *testing.T) {
+	// Property: CP-1
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	mk := func(id, slug string, tenant uuid.UUID) *core.Post {
+		return newTestPost(t, func(p *core.Post) {
+			p.ID = mustParsePostID(id)
+			p.Slug = slug
+			p.TenantID = tenant
+		})
 	}
 
-	if err := repo.Create(ctx, post); err != nil {
-		t.Fatalf("Create() first error = %v", err)
+	if err := repo.Create(tenantCtx(testTenant1), mk("a", "post-a", testTenant1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(tenantCtx(testTenant1), mk("b", "post-b", testTenant1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(tenantCtx(testTenant2), mk("c", "post-c", testTenant2)); err != nil {
+		t.Fatal(err)
 	}
 
-	// Try to create again
-	if err := repo.Create(ctx, post); !errors.Is(err, core.ErrAlreadyExists) {
+	got, err := repo.List(context.Background(), core.PostFilter{TenantID: testTenant1})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("List() length = %d, want 2", len(got))
+	}
+}
+
+func TestFSRepo_List_RejectsZeroTenant(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	_, err := repo.List(context.Background(), core.PostFilter{})
+	if !errors.Is(err, core.ErrValidation) {
+		t.Errorf("List(zero tenant) error = %v, want ErrValidation", err)
+	}
+}
+
+func TestFSRepo_List_EmptyTenantDir(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	got, err := repo.List(context.Background(), core.PostFilter{TenantID: testTenant1})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("List() length = %d, want 0", len(got))
+	}
+}
+
+func TestFSRepo_List_AuthorFilter(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	mk := func(id, slug string, author uuid.UUID) *core.Post {
+		return newTestPost(t, func(p *core.Post) {
+			p.ID = mustParsePostID(id)
+			p.Slug = slug
+			p.AuthorID = author
+		})
+	}
+
+	for _, p := range []*core.Post{
+		mk("af-1", "af-1", testAuthor1),
+		mk("af-2", "af-2", testAuthor1),
+		mk("af-3", "af-3", testAuthor2),
+	} {
+		if err := repo.Create(tenantCtx(testTenant1), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	authorRef := testAuthor1
+	got, err := repo.List(context.Background(), core.PostFilter{TenantID: testTenant1, AuthorID: &authorRef})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("List() length = %d, want 2", len(got))
+	}
+}
+
+func TestFSRepo_List_Sort(t *testing.T) {
+	// Property: CP-11
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	posts := []*core.Post{
+		newTestPost(t, func(p *core.Post) {
+			p.ID = mustParsePostID("s-c")
+			p.Slug = "s-c"
+			p.Title = "C"
+			p.CreatedAt = base.Add(2 * time.Hour)
+			p.UpdatedAt = base.Add(2 * time.Hour)
+			p.Status = core.StatusReady
+		}),
+		newTestPost(t, func(p *core.Post) {
+			p.ID = mustParsePostID("s-a")
+			p.Slug = "s-a"
+			p.Title = "A"
+			p.CreatedAt = base.Add(0 * time.Hour)
+			p.UpdatedAt = base.Add(0 * time.Hour)
+			p.Status = core.StatusDraft
+		}),
+		newTestPost(t, func(p *core.Post) {
+			p.ID = mustParsePostID("s-b")
+			p.Slug = "s-b"
+			p.Title = "B"
+			p.CreatedAt = base.Add(1 * time.Hour)
+			p.UpdatedAt = base.Add(1 * time.Hour)
+			p.Status = core.StatusIdea
+		}),
+	}
+	for _, p := range posts {
+		if err := repo.Create(tenantCtx(testTenant1), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		name      string
+		sortBy    string
+		sortOrder string
+		wantFirst string
+	}{
+		{"created_at asc", "created_at", "asc", "A"},
+		{"created_at desc", "created_at", "desc", "C"},
+		{"updated_at asc", "updated_at", "asc", "A"},
+		{"updated_at desc", "updated_at", "desc", "C"},
+		{"title asc", "title", "asc", "A"},
+		{"title desc", "title", "desc", "C"},
+		{"status asc", "status", "asc", "draft"},
+		{"status desc", "status", "desc", "ready"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := repo.List(context.Background(), core.PostFilter{
+				TenantID: testTenant1, SortBy: tt.sortBy, SortOrder: tt.sortOrder,
+			})
+			if err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+			if len(got) == 0 {
+				t.Fatalf("List() empty")
+			}
+			switch tt.sortBy {
+			case "status":
+				if string(got[0].Status) != tt.wantFirst {
+					t.Errorf("first status = %s, want %s", got[0].Status, tt.wantFirst)
+				}
+			default:
+				if got[0].Title != tt.wantFirst {
+					t.Errorf("first title = %s, want %s", got[0].Title, tt.wantFirst)
+				}
+			}
+		})
+	}
+
+	t.Run("invalid sort key", func(t *testing.T) {
+		_, err := repo.List(context.Background(), core.PostFilter{TenantID: testTenant1, SortBy: "garbage"})
+		if !errors.Is(err, core.ErrValidation) {
+			t.Errorf("List(invalid sort) error = %v, want ErrValidation", err)
+		}
+	})
+}
+
+func TestFSRepo_List_LimitOffset(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := range 5 {
+		idx := i
+		p := newTestPost(t, func(pp *core.Post) {
+			pp.ID = mustParsePostID(filepath.Join("lo", string(rune('a'+idx))))
+			pp.Slug = "lo-" + string(rune('a'+idx))
+			pp.Title = "T" + string(rune('A'+idx))
+			pp.CreatedAt = base.Add(time.Duration(idx) * time.Hour)
+			pp.UpdatedAt = pp.CreatedAt
+		})
+		if err := repo.Create(tenantCtx(testTenant1), p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := repo.List(context.Background(), core.PostFilter{
+		TenantID: testTenant1, SortBy: "created_at", SortOrder: "asc", Limit: 2, Offset: 1,
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("List() length = %d, want 2", len(got))
+	}
+	if got[0].Title != "TB" || got[1].Title != "TC" {
+		t.Errorf("got titles = [%s, %s], want [TB, TC]", got[0].Title, got[1].Title)
+	}
+}
+
+func TestFSRepo_Delete_RemovesFile(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	post := newTestPost(t, func(p *core.Post) {
+		p.ID = mustParsePostID("del-1")
+		p.Slug = "del-1"
+	})
+	if err := repo.Create(tenantCtx(testTenant1), post); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.Delete(tenantCtx(testTenant1), post.ID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	expected := filepath.Join(dir, post.TenantShortID(), "del-1.md")
+	if _, err := os.Stat(expected); !os.IsNotExist(err) {
+		t.Errorf("file still exists after Delete: %v", err)
+	}
+
+	if err := repo.Delete(tenantCtx(testTenant1), post.ID); !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("Delete() second error = %v, want ErrNotFound", err)
+	}
+}
+
+func TestFSRepo_Update_AfterCreate(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	post := newTestPost(t, func(p *core.Post) {
+		p.ID = mustParsePostID("upd-1")
+		p.Slug = "upd-1"
+		p.Title = "Original"
+	})
+	if err := repo.Create(tenantCtx(testTenant1), post); err != nil {
+		t.Fatal(err)
+	}
+
+	post.Title = "Updated"
+	post.Revision = 2
+	post.UpdatedAt = post.UpdatedAt.Add(time.Hour)
+	if err := repo.Update(tenantCtx(testTenant1), post); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	got, err := repo.GetByID(tenantCtx(testTenant1), post.ID)
+	if err != nil {
+		t.Fatalf("GetByID() error = %v", err)
+	}
+	if got.Title != "Updated" {
+		t.Errorf("Title = %s, want Updated", got.Title)
+	}
+	if got.Revision != 2 {
+		t.Errorf("Revision = %d, want 2", got.Revision)
+	}
+}
+
+func TestFSRepo_Create_AlreadyExists(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	post := newTestPost(t, func(p *core.Post) {
+		p.ID = mustParsePostID("dup")
+		p.Slug = "dup"
+	})
+	if err := repo.Create(tenantCtx(testTenant1), post); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(tenantCtx(testTenant1), post); !errors.Is(err, core.ErrAlreadyExists) {
 		t.Errorf("Create() second error = %v, want ErrAlreadyExists", err)
 	}
 }
 
-func TestParsePost(t *testing.T) {
-	data := []byte(`---
-title: Test Post
-slug: test-post
-status: draft
-platforms:
-  - telegram
-tags:
-  - go
-  - test
-external:
-  telegram_url: ""
----
+func TestFSRepo_GetByID_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
 
-This is the post content.
-`)
-
-	post, err := ParsePost(data)
-	if err != nil {
-		t.Fatalf("ParsePost() error = %v", err)
-	}
-
-	if post.Title != "Test Post" {
-		t.Errorf("Title = %v, want Test Post", post.Title)
-	}
-	if post.Slug != "test-post" {
-		t.Errorf("Slug = %v, want test-post", post.Slug)
-	}
-	if post.Status != core.StatusDraft {
-		t.Errorf("Status = %v, want draft", post.Status)
-	}
-	if len(post.Tags) != 2 {
-		t.Errorf("Tags length = %v, want 2", len(post.Tags))
-	}
-	if post.Content != "This is the post content." {
-		t.Errorf("Content = %v, want 'This is the post content.'", post.Content)
+	_, err := repo.GetByID(tenantCtx(testTenant1), mustParsePostID("nope"))
+	if !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("GetByID() error = %v, want ErrNotFound", err)
 	}
 }
 
-func TestSerializePost(t *testing.T) {
-	now := time.Now()
-	post := &core.Post{
-		ID:          mustParsePostID("test-id"),
-		Title:       "Test Post",
-		Slug:        "test-post",
-		Status:      core.StatusDraft,
-		Tags:        []string{"go", "test"},
-		Deadline:    &now,
-		ScheduledAt: &now,
-		Content:     "Test content here",
-		External: core.ExternalLinks{
-			TelegramURL: "https://t.me/post",
-		},
+func TestFSRepo_GetBySlug(t *testing.T) {
+	dir := t.TempDir()
+	repo, _ := NewFileSystemRepository(dir)
+
+	post := newTestPost(t, func(p *core.Post) {
+		p.ID = mustParsePostID("bs")
+		p.Slug = "by-slug"
+	})
+	if err := repo.Create(tenantCtx(testTenant1), post); err != nil {
+		t.Fatal(err)
 	}
 
-	data, err := SerializePost(post)
+	got, err := repo.GetBySlug(tenantCtx(testTenant1), "by-slug")
 	if err != nil {
-		t.Fatalf("SerializePost() error = %v", err)
+		t.Fatalf("GetBySlug() error = %v", err)
+	}
+	if got.Title != post.Title {
+		t.Errorf("Title = %s, want %s", got.Title, post.Title)
 	}
 
-	// Parse back and verify
-	parsed, err := ParsePost(data)
-	if err != nil {
-		t.Fatalf("ParsePost() after serialize error = %v", err)
+	if _, err := repo.GetBySlug(tenantCtx(testTenant1), "missing"); !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("GetBySlug(missing) error = %v, want ErrNotFound", err)
 	}
 
-	if parsed.Title != post.Title {
-		t.Errorf("Title = %v, want %v", parsed.Title, post.Title)
-	}
-	if parsed.Status != post.Status {
-		t.Errorf("Status = %v, want %v", parsed.Status, post.Status)
-	}
-	if parsed.Content != post.Content {
-		t.Errorf("Content = %v, want %v", parsed.Content, post.Content)
+	if _, err := repo.GetBySlug(context.Background(), "by-slug"); !errors.Is(err, core.ErrTenantMismatch) {
+		t.Errorf("GetBySlug(no tenant) error = %v, want ErrTenantMismatch", err)
 	}
 }
 
@@ -349,12 +400,9 @@ func TestNewFileSystemRepository_CreatesDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileSystemRepository() error = %v", err)
 	}
-
 	if repo == nil {
 		t.Fatal("NewFileSystemRepository() returned nil")
 	}
-
-	// Verify directory was created
 	if _, err := os.Stat(newDir); os.IsNotExist(err) {
 		t.Errorf("Directory was not created")
 	}

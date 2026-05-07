@@ -5,12 +5,107 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/core"
 	"gopkg.in/yaml.v3"
 )
+
+// ParsePost парсит Markdown файл с YAML frontmatter и валидирует обязательные поля.
+func ParsePost(data []byte) (*core.Post, error) {
+	content := bytes.TrimPrefix(data, []byte("---\n"))
+	parts := bytes.SplitN(content, []byte("\n---\n"), 2)
+
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("%w: invalid frontmatter format", core.ErrValidation)
+	}
+
+	frontmatter := parts[0]
+	body := parts[1]
+
+	var post core.Post
+	if err := yaml.Unmarshal(frontmatter, &post); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга YAML: %w", err)
+	}
+
+	post.Content = strings.TrimSpace(string(body))
+
+	if post.Tags == nil {
+		post.Tags = []string{}
+	}
+
+	if err := validateRequiredPostFields(&post); err != nil {
+		return nil, err
+	}
+
+	return &post, nil
+}
+
+// validateRequiredPostFields проверяет, что в посте заполнены обязательные поля.
+func validateRequiredPostFields(post *core.Post) error {
+	if post.ID == (core.PostID{}) {
+		return fmt.Errorf("%w: missing required field id", core.ErrValidation)
+	}
+	if post.TenantID == uuid.Nil {
+		return fmt.Errorf("%w: missing required field tenant_id", core.ErrValidation)
+	}
+	if post.AuthorID == uuid.Nil {
+		return fmt.Errorf("%w: missing required field author_id", core.ErrValidation)
+	}
+	if post.Title == "" {
+		return fmt.Errorf("%w: missing required field title", core.ErrValidation)
+	}
+	if post.Slug == "" {
+		return fmt.Errorf("%w: missing required field slug", core.ErrValidation)
+	}
+	if post.Status == "" {
+		return fmt.Errorf("%w: missing required field status", core.ErrValidation)
+	}
+	if post.CreatedAt.IsZero() {
+		return fmt.Errorf("%w: missing required field created_at", core.ErrValidation)
+	}
+	if post.UpdatedAt.IsZero() {
+		return fmt.Errorf("%w: missing required field updated_at", core.ErrValidation)
+	}
+	if post.Revision < 1 {
+		return fmt.Errorf("%w: missing required field revision", core.ErrValidation)
+	}
+	return nil
+}
+
+// SerializePost сериализует пост в Markdown с YAML frontmatter.
+// PublishHistory обрезается до последних 10 записей (sorted by At desc).
+func SerializePost(post *core.Post) ([]byte, error) {
+	out := *post
+	if len(post.PublishHistory) > 0 {
+		hist := make([]core.PublishAttempt, len(post.PublishHistory))
+		copy(hist, post.PublishHistory)
+		sort.SliceStable(hist, func(i, j int) bool {
+			return hist[i].At.After(hist[j].At)
+		})
+		if len(hist) > 10 {
+			hist = hist[:10]
+		}
+		out.PublishHistory = hist
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString("---\n")
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&out); err != nil {
+		return nil, err
+	}
+	encoder.Close()
+
+	buf.WriteString("---\n\n")
+	buf.WriteString(out.Content)
+
+	return buf.Bytes(), nil
+}
 
 // FrontmatterType представляет тип frontmatter.
 type FrontmatterType int
@@ -26,10 +121,10 @@ const (
 
 // FrontmatterResult результат парсинга frontmatter.
 type FrontmatterResult struct {
-	Type       FrontmatterType
+	Type           FrontmatterType
 	HasFrontmatter bool
-	Content    string
-	Metadata   map[string]any
+	Content        string
+	Metadata       map[string]any
 	RawFrontmatter string // Исходный текст frontmatter
 }
 
@@ -40,15 +135,15 @@ var yamlDelimiter = regexp.MustCompile(`^---\s*$`)
 // Поддерживает YAML и отсутствие frontmatter.
 func ParseFrontmatter(content string) (*FrontmatterResult, error) {
 	lines := strings.Split(content, "\n")
-	
+
 	// Проверяем, начинается ли с ---
 	if len(lines) == 0 || !yamlDelimiter.MatchString(strings.TrimSpace(lines[0])) {
 		// Нет frontmatter
 		return &FrontmatterResult{
-			Type:       FrontmatterNone,
+			Type:           FrontmatterNone,
 			HasFrontmatter: false,
-			Content:    content,
-			Metadata:   make(map[string]any),
+			Content:        content,
+			Metadata:       make(map[string]any),
 			RawFrontmatter: "",
 		}, nil
 	}
@@ -65,10 +160,10 @@ func ParseFrontmatter(content string) (*FrontmatterResult, error) {
 	if endIndex == -1 {
 		// Непарный frontmatter, считаем что это контент
 		return &FrontmatterResult{
-			Type:       FrontmatterNone,
+			Type:           FrontmatterNone,
 			HasFrontmatter: false,
-			Content:    content,
-			Metadata:   make(map[string]any),
+			Content:        content,
+			Metadata:       make(map[string]any),
 			RawFrontmatter: "",
 		}, nil
 	}
@@ -76,7 +171,7 @@ func ParseFrontmatter(content string) (*FrontmatterResult, error) {
 	// Извлекаем frontmatter
 	frontmatterLines := lines[1:endIndex]
 	frontmatterStr := strings.Join(frontmatterLines, "\n")
-	
+
 	// Извлекаем контент после frontmatter
 	contentLines := lines[endIndex+1:]
 	contentStr := strings.Join(contentLines, "\n")
@@ -88,10 +183,10 @@ func ParseFrontmatter(content string) (*FrontmatterResult, error) {
 	}
 
 	return &FrontmatterResult{
-		Type:       FrontmatterYAML,
+		Type:           FrontmatterYAML,
 		HasFrontmatter: true,
-		Content:    strings.TrimSpace(contentStr),
-		Metadata:   metadata,
+		Content:        strings.TrimSpace(contentStr),
+		Metadata:       metadata,
 		RawFrontmatter: frontmatterStr,
 	}, nil
 }
@@ -255,17 +350,17 @@ func BuildFrontmatter(post *core.Post) (string, error) {
 	if post.ID != (core.PostID{}) {
 		writeYAMLField(&buf, "id", post.ID.String())
 	}
-	
+
 	// Title
 	if post.Title != "" {
 		writeYAMLField(&buf, "title", post.Title)
 	}
-	
+
 	// Slug
 	if post.Slug != "" {
 		writeYAMLField(&buf, "slug", post.Slug)
 	}
-	
+
 	// Status
 	writeYAMLField(&buf, "status", string(post.Status))
 
@@ -273,22 +368,22 @@ func BuildFrontmatter(post *core.Post) (string, error) {
 	if len(post.Tags) > 0 {
 		writeYAMLArray(&buf, "tags", post.Tags)
 	}
-	
+
 	// Deadline
 	if post.Deadline != nil {
 		writeYAMLField(&buf, "deadline", post.Deadline.Format(time.RFC3339))
 	}
-	
+
 	// ScheduledAt
 	if post.ScheduledAt != nil {
 		writeYAMLField(&buf, "scheduled_at", post.ScheduledAt.Format(time.RFC3339))
 	}
-	
+
 	// PublishedAt
 	if post.PublishedAt != nil {
 		writeYAMLField(&buf, "published_at", post.PublishedAt.Format(time.RFC3339))
 	}
-	
+
 	// External
 	if post.External.TelegramURL != "" {
 		buf.WriteString("external:\n")
@@ -316,36 +411,36 @@ func writeYAMLArray(buf *bytes.Buffer, key string, values []string) {
 // SerializePostWithFrontmatter сериализует пост в Markdown с нормализованным frontmatter.
 func SerializePostWithFrontmatter(post *core.Post) ([]byte, error) {
 	var buf bytes.Buffer
-	
+
 	// Строим frontmatter
 	frontmatter, err := BuildFrontmatter(post)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	buf.WriteString(frontmatter)
 	buf.WriteString("\n\n")
 	buf.WriteString(post.Content)
-	
+
 	return buf.Bytes(), nil
 }
 
 // ImportReport отчёт об импорте одного файла.
 type ImportReport struct {
-	FilePath     string
-	Slug         string
-	Status       string
-	HasFrontmatter bool
+	FilePath        string
+	Slug            string
+	Status          string
+	HasFrontmatter  bool
 	FrontmatterType FrontmatterType
-	Action       string // "created", "updated", "skipped"
-	Error        error
+	Action          string // "created", "updated", "skipped"
+	Error           error
 }
 
 // ImportStats статистика импорта.
 type ImportStats struct {
-	Total     int
-	Imported  int
-	Updated   int
-	Skipped   int
-	Errors    int
+	Total    int
+	Imported int
+	Updated  int
+	Skipped  int
+	Errors   int
 }

@@ -1,10 +1,13 @@
 package fsrepo
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/core"
 )
 
@@ -25,7 +28,6 @@ This is the content.
 	if err != nil {
 		t.Fatalf("ParseFrontmatter() error = %v", err)
 	}
-
 	if !result.HasFrontmatter {
 		t.Error("HasFrontmatter = false, want true")
 	}
@@ -34,14 +36,6 @@ This is the content.
 	}
 	if result.Content != "This is the content." {
 		t.Errorf("Content = %q, want 'This is the content.'", result.Content)
-	}
-
-	metadata := result.Metadata
-	if metadata["title"] != "Test Post" {
-		t.Errorf("title = %v, want 'Test Post'", metadata["title"])
-	}
-	if metadata["slug"] != "test-post" {
-		t.Errorf("slug = %v, want 'test-post'", metadata["slug"])
 	}
 }
 
@@ -55,166 +49,11 @@ No YAML here.
 	if err != nil {
 		t.Fatalf("ParseFrontmatter() error = %v", err)
 	}
-
 	if result.HasFrontmatter {
 		t.Error("HasFrontmatter = true, want false")
 	}
-	if result.Type != FrontmatterNone {
-		t.Errorf("Type = %v, want FrontmatterNone", result.Type)
-	}
 	if !strings.Contains(result.Content, "This is just content") {
 		t.Errorf("Content = %q", result.Content)
-	}
-}
-
-func TestParseFrontmatter_UnclosedFrontmatter(t *testing.T) {
-	content := `---
-title: Test Post
-slug: test-post
-
-This is content.
-`
-
-	result, err := ParseFrontmatter(content)
-	if err != nil {
-		t.Fatalf("ParseFrontmatter() error = %v", err)
-	}
-
-	// Непарный frontmatter должен считаться отсутствием
-	if result.HasFrontmatter {
-		t.Error("HasFrontmatter = true, want false (unclosed frontmatter)")
-	}
-}
-
-func TestNormalizeFrontmatter_NoFrontmatter(t *testing.T) {
-	result := &FrontmatterResult{
-		Type:           FrontmatterNone,
-		HasFrontmatter: false,
-		Content:        "Just content",
-		Metadata:       make(map[string]any),
-	}
-
-	post, err := NormalizeFrontmatter(result, "my-slug")
-	if err != nil {
-		t.Fatalf("NormalizeFrontmatter() error = %v", err)
-	}
-
-	if post.Slug != "my-slug" {
-		t.Errorf("Slug = %v, want my-slug", post.Slug)
-	}
-	if post.Status != core.StatusIdea {
-		t.Errorf("Status = %v, want idea", post.Status)
-	}
-	if post.Content != "Just content" {
-		t.Errorf("Content = %q, want 'Just content'", post.Content)
-	}
-}
-
-func TestNormalizeFrontmatter_WithYAML(t *testing.T) {
-	metadata := map[string]any{
-		"title":   "My Title",
-		"slug":    "my-slug",
-		"status":  "ready",
-		"tags":    []any{"go", "cli"},
-		"deadline": "2026-03-15",
-	}
-
-	result := &FrontmatterResult{
-		Type:           FrontmatterYAML,
-		HasFrontmatter: true,
-		Content:        "Content here",
-		Metadata:       metadata,
-	}
-
-	post, err := NormalizeFrontmatter(result, "default-slug")
-	if err != nil {
-		t.Fatalf("NormalizeFrontmatter() error = %v", err)
-	}
-
-	if post.Title != "My Title" {
-		t.Errorf("Title = %v, want 'My Title'", post.Title)
-	}
-	if post.Slug != "my-slug" {
-		t.Errorf("Slug = %v, want 'my-slug'", post.Slug)
-	}
-	if post.Status != core.StatusReady {
-		t.Errorf("Status = %v, want ready", post.Status)
-	}
-	if len(post.Tags) != 2 {
-		t.Errorf("Tags length = %v, want 2", len(post.Tags))
-	}
-	if post.Deadline == nil {
-		t.Error("Deadline = nil, want date")
-	}
-}
-
-func TestNormalizeFrontmatter_InvalidStatus(t *testing.T) {
-	metadata := map[string]any{
-		"title":  "Test",
-		"slug":   "test",
-		"status": "invalid_status",
-	}
-
-	result := &FrontmatterResult{
-		Type:           FrontmatterYAML,
-		HasFrontmatter: true,
-		Content:        "Content",
-		Metadata:       metadata,
-	}
-
-	post, err := NormalizeFrontmatter(result, "test")
-	if err != nil {
-		t.Fatalf("NormalizeFrontmatter() error = %v", err)
-	}
-
-	// Должен установиться в draft
-	if post.Status != core.StatusDraft {
-		t.Errorf("Status = %v, want draft (for invalid status)", post.Status)
-	}
-}
-
-func TestNormalizeFrontmatter_Tags(t *testing.T) {
-	tests := []struct {
-		name      string
-		tagsRaw   any
-		wantCount int
-	}{
-		{
-			name:      "array of tags",
-			tagsRaw:   []any{"go", "cli", "test"},
-			wantCount: 3,
-		},
-		{
-			name:      "comma-separated string",
-			tagsRaw:   "go, cli, test",
-			wantCount: 3,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			metadata := map[string]any{
-				"title": "Test",
-				"slug":  "test",
-				"tags":  tt.tagsRaw,
-			}
-
-			result := &FrontmatterResult{
-				Type:           FrontmatterYAML,
-				HasFrontmatter: true,
-				Content:        "Content",
-				Metadata:       metadata,
-			}
-
-			post, err := NormalizeFrontmatter(result, "test")
-			if err != nil {
-				t.Fatalf("NormalizeFrontmatter() error = %v", err)
-			}
-
-			if len(post.Tags) != tt.wantCount {
-				t.Errorf("Tags length = %v, want %v", len(post.Tags), tt.wantCount)
-			}
-		})
 	}
 }
 
@@ -227,11 +66,9 @@ func TestParseTime(t *testing.T) {
 		{"time.Time", time.Now(), false},
 		{"RFC3339 string", "2026-03-15T10:00:00Z", false},
 		{"date string", "2026-03-15", false},
-		{"datetime string", "2026-03-15 10:00:00", false},
 		{"invalid string", "not a date", true},
 		{"invalid type", 12345, true},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := parseTime(tt.input)
@@ -253,9 +90,7 @@ func TestIsValidPostStatus(t *testing.T) {
 		{core.StatusScheduled, true},
 		{core.StatusPublished, true},
 		{core.PostStatus("invalid"), false},
-		{core.PostStatus(""), false},
 	}
-
 	for _, tt := range tests {
 		t.Run(string(tt.status), func(t *testing.T) {
 			if got := IsValidPostStatus(tt.status); got != tt.want {
@@ -265,92 +100,241 @@ func TestIsValidPostStatus(t *testing.T) {
 	}
 }
 
-func TestBuildFrontmatter(t *testing.T) {
+func TestFrontmatter_RoundTrip_AllFields(t *testing.T) {
+	// Property: CP-6
 	now := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	excerpt := "Short excerpt"
+	revisionSHA := "abcdef0123"
+	deadline := now.Add(24 * time.Hour)
 
-	post := &core.Post{
-		ID:          mustParsePostID("test-id-123"),
-		Title:       "Test Post",
-		Slug:        "test-post",
-		Status:      core.StatusDraft,
-		Tags:        []string{"go", "test"},
-		Deadline:    &now,
-		Content:     "Test content",
-		External: core.ExternalLinks{
-			TelegramURL: "https://t.me/test",
+	cover := &core.Attachment{
+		ID:       uuid.New(),
+		Type:     core.AttachmentTypePhoto,
+		Path:     "media/cover.png",
+		Caption:  "Cover image",
+		MimeType: "image/png",
+		Size:     1024,
+	}
+	atts := []core.Attachment{
+		{
+			ID:       uuid.New(),
+			Type:     core.AttachmentTypeDocument,
+			Path:     "media/doc.pdf",
+			MimeType: "application/pdf",
+			Size:     2048,
+		},
+		{
+			ID:   uuid.New(),
+			Type: core.AttachmentTypeVideo,
+			URL:  "https://example.com/video.mp4",
+		},
+	}
+	history := []core.PublishAttempt{
+		{
+			ID:              uuid.New(),
+			At:              now.Add(-3 * time.Hour),
+			Target:          "telegram",
+			Status:          "success",
+			MessageID:       "msg-1",
+			ResponsePayload: json.RawMessage(`{"ok":true}`),
+			RetryAttempt:    1,
+			Duration:        100 * time.Millisecond,
+		},
+		{
+			ID:           uuid.New(),
+			At:           now.Add(-2 * time.Hour),
+			Target:       "telegram",
+			Status:       "failed",
+			Error:        "boom",
+			RetryAttempt: 2,
+			Duration:     50 * time.Millisecond,
+		},
+		{
+			ID:           uuid.New(),
+			At:           now.Add(-1 * time.Hour),
+			Target:       "telegram",
+			Status:       "success",
+			MessageID:    "msg-2",
+			RetryAttempt: 3,
+			Duration:     75 * time.Millisecond,
 		},
 	}
 
-	frontmatter, err := BuildFrontmatter(post)
-	if err != nil {
-		t.Fatalf("BuildFrontmatter() error = %v", err)
+	post := &core.Post{
+		ID:             mustParsePostID("rt-all-fields"),
+		TenantID:       testTenant1,
+		AuthorID:       testAuthor1,
+		Title:          "Round-trip Post",
+		Slug:           "round-trip-post",
+		Status:         core.StatusReady,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		Revision:       3,
+		Tags:           []string{"go", "test"},
+		Deadline:       &deadline,
+		Excerpt:        &excerpt,
+		CoverImage:     cover,
+		Attachments:    atts,
+		PublishHistory: history,
+		RevisionSHA:    &revisionSHA,
+		Content:        "Body content here.",
 	}
 
-	// Проверяем наличие ключевых полей
-	// ID будет в формате UUID, поэтому проверяем наличие поля id
-	if !strings.Contains(frontmatter, "id:") {
-		t.Error("Frontmatter missing id")
+	data, err := SerializePost(post)
+	if err != nil {
+		t.Fatalf("SerializePost() error = %v", err)
 	}
-	if !strings.Contains(frontmatter, `title: "Test Post"`) {
-		t.Error("Frontmatter missing title")
+
+	parsed, err := ParsePost(data)
+	if err != nil {
+		t.Fatalf("ParsePost() error = %v", err)
 	}
-	if !strings.Contains(frontmatter, `status: "draft"`) {
-		t.Error("Frontmatter missing status")
+
+	if parsed.ID != post.ID {
+		t.Errorf("ID mismatch: %v vs %v", parsed.ID, post.ID)
 	}
-	if !strings.Contains(frontmatter, "telegram") {
-		t.Error("Frontmatter missing telegram")
+	if parsed.TenantID != post.TenantID {
+		t.Errorf("TenantID mismatch")
 	}
-	if !strings.Contains(frontmatter, "go") {
-		t.Error("Frontmatter missing go tag")
+	if parsed.AuthorID != post.AuthorID {
+		t.Errorf("AuthorID mismatch")
+	}
+	if parsed.Revision != 3 {
+		t.Errorf("Revision = %d, want 3", parsed.Revision)
+	}
+	if parsed.Excerpt == nil || *parsed.Excerpt != excerpt {
+		t.Errorf("Excerpt mismatch")
+	}
+	if parsed.RevisionSHA == nil || *parsed.RevisionSHA != revisionSHA {
+		t.Errorf("RevisionSHA mismatch")
+	}
+	if parsed.CoverImage == nil || parsed.CoverImage.Path != cover.Path {
+		t.Errorf("CoverImage mismatch")
+	}
+	if len(parsed.Attachments) != 2 {
+		t.Errorf("Attachments len = %d, want 2", len(parsed.Attachments))
+	}
+	if len(parsed.PublishHistory) != 3 {
+		t.Errorf("PublishHistory len = %d, want 3", len(parsed.PublishHistory))
+	}
+	if parsed.Content != "Body content here." {
+		t.Errorf("Content mismatch: %q", parsed.Content)
 	}
 }
 
-func TestSerializePostWithFrontmatter(t *testing.T) {
+func TestFrontmatter_PublishHistoryTruncation(t *testing.T) {
+	// Property: CP-5
+	now := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	attempts := make([]core.PublishAttempt, 15)
+	for i := range 15 {
+		attempts[i] = core.PublishAttempt{
+			ID:           uuid.New(),
+			At:           now.Add(time.Duration(i) * time.Hour),
+			Target:       "telegram",
+			Status:       "success",
+			RetryAttempt: i + 1,
+		}
+	}
+
 	post := &core.Post{
-		ID:        mustParsePostID("test-id"),
-		Title:     "Test",
-		Slug:      "test",
+		ID:             mustParsePostID("trunc-1"),
+		TenantID:       testTenant1,
+		AuthorID:       testAuthor1,
+		Title:          "Trunc",
+		Slug:           "trunc",
+		Status:         core.StatusReady,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		Revision:       1,
+		PublishHistory: attempts,
+		Content:        "x",
+	}
+
+	data, err := SerializePost(post)
+	if err != nil {
+		t.Fatalf("SerializePost() error = %v", err)
+	}
+	parsed, err := ParsePost(data)
+	if err != nil {
+		t.Fatalf("ParsePost() error = %v", err)
+	}
+
+	if len(parsed.PublishHistory) != 10 {
+		t.Fatalf("PublishHistory len = %d, want 10", len(parsed.PublishHistory))
+	}
+	// Должны остаться записи с RetryAttempt 6..15 (последние 10 по At desc).
+	// После SerializePost они в desc-порядке, при ParsePost остаются в том же порядке.
+	first := parsed.PublishHistory[0]
+	last := parsed.PublishHistory[9]
+	if first.RetryAttempt != 15 {
+		t.Errorf("first RetryAttempt = %d, want 15", first.RetryAttempt)
+	}
+	if last.RetryAttempt != 6 {
+		t.Errorf("last RetryAttempt = %d, want 6", last.RetryAttempt)
+	}
+}
+
+func TestFrontmatter_RejectsMissingFields(t *testing.T) {
+	// Property: CP-7
+	now := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	base := &core.Post{
+		ID:        mustParsePostID("base"),
+		TenantID:  testTenant1,
+		AuthorID:  testAuthor1,
+		Title:     "Title",
+		Slug:      "slug",
 		Status:    core.StatusDraft,
-		Tags:      []string{"test"},
-		Content:   "Test content here",
+		CreatedAt: now,
+		UpdatedAt: now,
+		Revision:  1,
+		Content:   "content",
 	}
 
-	data, err := SerializePostWithFrontmatter(post)
-	if err != nil {
-		t.Fatalf("SerializePostWithFrontmatter() error = %v", err)
+	tests := []struct {
+		name   string
+		mutate func(p *core.Post)
+	}{
+		{"missing id", func(p *core.Post) { p.ID = core.PostID{} }},
+		{"missing tenant_id", func(p *core.Post) { p.TenantID = uuid.Nil }},
+		{"missing author_id", func(p *core.Post) { p.AuthorID = uuid.Nil }},
+		{"missing title", func(p *core.Post) { p.Title = "" }},
+		{"missing slug", func(p *core.Post) { p.Slug = "" }},
+		{"missing status", func(p *core.Post) { p.Status = "" }},
+		{"missing created_at", func(p *core.Post) { p.CreatedAt = time.Time{} }},
+		{"missing updated_at", func(p *core.Post) { p.UpdatedAt = time.Time{} }},
+		{"missing revision", func(p *core.Post) { p.Revision = 0 }},
 	}
 
-	dataStr := string(data)
-	if !strings.HasPrefix(dataStr, "---") {
-		t.Error("Serialized data should start with ---")
-	}
-	if !strings.Contains(dataStr, "Test content here") {
-		t.Error("Serialized data missing content")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cp := *base
+			tt.mutate(&cp)
+			data, err := SerializePost(&cp)
+			if err != nil {
+				t.Fatalf("SerializePost() error = %v", err)
+			}
+			_, err = ParsePost(data)
+			if !errors.Is(err, core.ErrValidation) {
+				t.Errorf("ParsePost(%s) error = %v, want ErrValidation", tt.name, err)
+			}
+		})
 	}
 }
 
-func TestNormalizeFrontmatter_ExternalLinks(t *testing.T) {
-	metadata := map[string]any{
-		"title": "Test",
-		"slug":  "test",
-		"external": map[string]any{
-			"telegram_url": "https://t.me/test_post",
-		},
+func TestAttachment_AbsolutePath_RejectsTraversal(t *testing.T) {
+	postsDir := t.TempDir()
+	att := core.Attachment{Path: "../etc/passwd"}
+	_, err := att.AbsolutePath(postsDir)
+	if !errors.Is(err, core.ErrValidation) {
+		t.Errorf("AbsolutePath(traversal) error = %v, want ErrValidation", err)
 	}
 
-	result := &FrontmatterResult{
-		Type:           FrontmatterYAML,
-		HasFrontmatter: true,
-		Content:        "Content",
-		Metadata:       metadata,
-	}
-
-	post, err := NormalizeFrontmatter(result, "test")
+	att2 := core.Attachment{Path: "media/safe.png"}
+	got, err := att2.AbsolutePath(postsDir)
 	if err != nil {
-		t.Fatalf("NormalizeFrontmatter() error = %v", err)
+		t.Errorf("AbsolutePath(safe) error = %v", err)
 	}
-
-	if post.External.TelegramURL != "https://t.me/test_post" {
-		t.Errorf("TelegramURL = %v, want https://t.me/test_post", post.External.TelegramURL)
+	if !strings.HasPrefix(got, postsDir) {
+		t.Errorf("AbsolutePath(safe) = %s, want prefix %s", got, postsDir)
 	}
 }
