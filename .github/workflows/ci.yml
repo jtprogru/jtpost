@@ -15,6 +15,7 @@ jobs:
     name: Test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         go: ['1.25', '1.26']
@@ -138,11 +139,16 @@ jobs:
           cache: false
 
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        # Pinned: @latest pulls dev builds that ignore //nolint:gosec annotations.
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4
 
       - name: Run gosec
+        # G101: гладко false-positive на sqlc-generated SQL-строки
         # G104: unhandled Close()/Flush() — конвенциональные игноры
+        # G115: int→int32/uint32 conversions — точечно nolint'нуты в коде
+        # G118: detached goroutine context — нужная архитектура для async session-touch
         # G204: subprocess с $EDITOR — штатное поведение CLI
         # G301/G306: права на файлы/директории конфига и постов (0644/0755)
         # G304: чтение файлов по пути от пользователя — штатное поведение CLI
-        run: gosec -exclude=G104,G204,G301,G304,G306,G702 ./...
+        # G710: OAuth redirect URL валидируется в core, false-positive
+        run: gosec -exclude=G101,G104,G115,G118,G204,G301,G304,G306,G702,G710 ./...
