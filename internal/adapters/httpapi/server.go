@@ -22,7 +22,8 @@ var indexTemplate string
 type Server struct {
 	service   *core.PostService
 	publisher core.Publisher
-	authSvc   *core.AuthService // nil if auth.type != token
+	authSvc   *core.AuthService  // nil if auth.type != token
+	oauthSvc  *core.OAuthService // nil if no providers configured
 	mux       *http.ServeMux
 	log       *logger.Logger
 	cfg       *config.Config
@@ -30,11 +31,12 @@ type Server struct {
 
 // ServerConfig конфигурация HTTP сервера.
 type ServerConfig struct {
-	Service     *core.PostService
-	Publisher   core.Publisher
-	AuthService *core.AuthService
-	Logger      *logger.Logger
-	Config      *config.Config
+	Service      *core.PostService
+	Publisher    core.Publisher
+	AuthService  *core.AuthService
+	OAuthService *core.OAuthService
+	Logger       *logger.Logger
+	Config       *config.Config
 }
 
 // NewServer создаёт новый HTTP сервер.
@@ -57,6 +59,7 @@ func NewServerWithConfig(cfg ServerConfig) *Server {
 		service:   cfg.Service,
 		publisher: cfg.Publisher,
 		authSvc:   cfg.AuthService,
+		oauthSvc:  cfg.OAuthService,
 		mux:       http.NewServeMux(),
 		log:       log,
 		cfg:       cfg.Config,
@@ -95,6 +98,10 @@ func (s *Server) registerRoutes() {
 		s.mux.HandleFunc("/api/auth/login", LoginHandler(s.authSvc, s.cfg))
 		s.mux.HandleFunc("/api/auth/logout", LogoutHandler(s.authSvc, s.cfg))
 		s.mux.HandleFunc("/api/auth/csrf", CSRFHandler(s.authSvc))
+	}
+	if s.oauthSvc != nil && s.authSvc != nil && s.cfg != nil {
+		oauthHandler := NewOAuthHandler(s.oauthSvc, s.authSvc, s.cfg)
+		s.mux.Handle("/api/auth/oauth/", oauthHandler)
 	}
 	s.mux.HandleFunc("/", s.handleIndex)
 }

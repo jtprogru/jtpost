@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/adapters/sqlite"
 	"github.com/jtprogru/jtpost/internal/core"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // setupBearer создаёт SQLite-репо, AuthService, валидный owner и issued PAT.
@@ -23,7 +22,7 @@ func setupBearer(t *testing.T) (*core.AuthService, string /* validRaw */, *core.
 	}
 	t.Cleanup(func() { _ = repo.Close() })
 
-	svc := core.NewAuthService(repo.Users(), repo.Tokens(), repo.Sessions(), bcrypt.MinCost, core.SystemClock{})
+	svc := core.NewAuthService(repo.Users(), repo.Tokens(), repo.Sessions(), core.NewMultiHasher(), core.SystemClock{})
 	ctx := context.Background()
 	user, err := svc.CreateUser(ctx, core.CreateUserInput{
 		TenantID: uuid.New(),

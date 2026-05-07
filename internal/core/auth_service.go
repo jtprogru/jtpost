@@ -36,31 +36,34 @@ var tokenFormatRegex = regexp.MustCompile(`^jtpat_[A-Za-z0-9]{8}_[A-Za-z0-9]{24}
 
 // AuthService инкапсулирует auth-логику: пользователи, PAT, sessions, RBAC.
 type AuthService struct {
-	users      UserRepository
-	tokens     TokenRepository
-	sessions   SessionRepository
-	bcryptCost int
-	clock      Clock
+	users    UserRepository
+	tokens   TokenRepository
+	sessions SessionRepository
+	hasher   PasswordHasher
+	clock    Clock
 }
 
-// NewAuthService создаёт AuthService. sessions может быть nil если фича
-// web-sessions не используется (auth.type=token без cookie-flow).
+// NewAuthService создаёт AuthService. sessions может быть nil. hasher по
+// умолчанию `NewMultiHasher` если nil.
 func NewAuthService(
 	users UserRepository,
 	tokens TokenRepository,
 	sessions SessionRepository,
-	bcryptCost int,
+	hasher PasswordHasher,
 	clock Clock,
 ) *AuthService {
 	if clock == nil {
 		clock = SystemClock{}
 	}
+	if hasher == nil {
+		hasher = NewMultiHasher()
+	}
 	return &AuthService{
-		users:      users,
-		tokens:     tokens,
-		sessions:   sessions,
-		bcryptCost: bcryptCost,
-		clock:      clock,
+		users:    users,
+		tokens:   tokens,
+		sessions: sessions,
+		hasher:   hasher,
+		clock:    clock,
 	}
 }
 
@@ -79,7 +82,7 @@ func (s *AuthService) CreateUser(ctx context.Context, in CreateUserInput) (*User
 	if in.Role == "" {
 		in.Role = RoleAuthor
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), s.bcryptCost)
+	hash, err := s.hasher.Hash(in.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
@@ -92,7 +95,7 @@ func (s *AuthService) CreateUser(ctx context.Context, in CreateUserInput) (*User
 		ID:           id,
 		TenantID:     in.TenantID,
 		Email:        in.Email,
-		PasswordHash: string(hash),
+		PasswordHash: hash,
 		Role:         in.Role,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -104,14 +107,17 @@ func (s *AuthService) CreateUser(ctx context.Context, in CreateUserInput) (*User
 }
 
 // VerifyPassword находит пользователя по (tenant, email) и сверяет password.
-// Любая ошибка (не найден / не совпало) — ErrUnauthorized, чтобы не утечь
-// существование email.
+// Любая ошибка (не найден / не совпало / OAuth-only user) — ErrUnauthorized.
 func (s *AuthService) VerifyPassword(ctx context.Context, tenantID uuid.UUID, email, password string) (*User, error) {
 	user, err := s.users.GetByEmail(ctx, tenantID, email)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+	if user.PasswordHash == "" {
+		// OAuth-only user — нельзя логиниться через password.
+		return nil, ErrUnauthorized
+	}
+	if err := s.hasher.Verify(user.PasswordHash, password); err != nil {
 		return nil, ErrUnauthorized
 	}
 	return user, nil
@@ -248,6 +254,35 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput, ttl time.Duratio
 	user, err := s.VerifyPassword(ctx, in.TenantID, in.Email, in.Password)
 	if err != nil {
 		return nil, err
+	}
+	// Auto-rehash legacy bcrypt passwords в Argon2id silently.
+	if s.hasher.NeedsRehash(user.PasswordHash) {
+		go func(u User, password string) {
+			newHash, hErr := s.hasher.Hash(password)
+			if hErr != nil {
+				return
+			}
+			u.PasswordHash = newHash
+			u.UpdatedAt = s.clock.Now().UTC()
+			_ = s.users.Update(context.Background(), &u) //nolint:contextcheck
+		}(*user, in.Password)
+	}
+	return s.issueSessionForUserAt(ctx, user, ttl)
+}
+
+// IssueSessionForUser создаёт session для уже-аутентифицированного user
+// (например после OAuth callback). Не делает password verify.
+func (s *AuthService) IssueSessionForUser(ctx context.Context, user *User, ttl time.Duration) (*LoginResult, error) {
+	if user == nil {
+		return nil, ErrUnauthorized
+	}
+	return s.issueSessionForUserAt(ctx, user, ttl)
+}
+
+// issueSessionForUserAt — общая логика создания session.
+func (s *AuthService) issueSessionForUserAt(ctx context.Context, user *User, ttl time.Duration) (*LoginResult, error) {
+	if s.sessions == nil {
+		return nil, fmt.Errorf("sessions repository not configured")
 	}
 	now := s.clock.Now().UTC()
 	expiresAt := now.Add(ttl)

@@ -8,6 +8,15 @@ import (
 	"database/sql"
 )
 
+type OauthAccount struct {
+	ID         string
+	UserID     string
+	Provider   string
+	ExternalID string
+	Email      string
+	CreatedAt  string
+}
+
 type Post struct {
 	ID             string
 	TenantID       string

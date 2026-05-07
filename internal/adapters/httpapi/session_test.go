@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/adapters/sqlite"
 	"github.com/jtprogru/jtpost/internal/core"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // fullChain собирает F4b chain: Bearer → Session → CSRF → RequireAuth.
@@ -33,7 +32,7 @@ func setupSession(t *testing.T) (*core.AuthService, string /*rawCookie*/, string
 	}
 	t.Cleanup(func() { _ = repo.Close() })
 
-	svc := core.NewAuthService(repo.Users(), repo.Tokens(), repo.Sessions(), bcrypt.MinCost, core.SystemClock{})
+	svc := core.NewAuthService(repo.Users(), repo.Tokens(), repo.Sessions(), core.NewMultiHasher(), core.SystemClock{})
 	ctx := context.Background()
 	tenantID := uuid.New()
 	user, err := svc.CreateUser(ctx, core.CreateUserInput{

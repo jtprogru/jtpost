@@ -90,11 +90,26 @@ type AuthConfig struct {
 	TokenTTL      time.Duration `yaml:"token_ttl" mapstructure:"token_ttl"`
 	BCryptCost    int           `yaml:"bcrypt_cost,omitempty" mapstructure:"bcrypt_cost"`
 	SessionTTL    time.Duration `yaml:"session_ttl,omitempty" mapstructure:"session_ttl"`
+	// PasswordHasher: "auto" (default, MultiHasher) | "argon2id" | "bcrypt".
+	PasswordHasher string `yaml:"password_hasher,omitempty" mapstructure:"password_hasher"`
+	// OAuthProviders — multi-provider конфиг (F4c). Maps provider name →
+	// OAuthProviderConfig (например: "github").
+	OAuthProviders map[string]OAuthProviderConfig `yaml:"oauth_providers,omitempty" mapstructure:"oauth_providers"`
 }
 
-// OAuthConfig настройки OAuth провайдера.
+// OAuthConfig — legacy single-provider настройка (F1 schema).
+// Deprecated в F4c: используйте OAuthProviders map. Если задано — мапится в
+// `OAuthProviders[Provider]` при загрузке.
 type OAuthConfig struct {
 	Provider     string `yaml:"provider" mapstructure:"provider"`
+	ClientID     string `yaml:"client_id" mapstructure:"client_id"`
+	ClientSecret string `yaml:"client_secret" mapstructure:"client_secret"`
+	RedirectURL  string `yaml:"redirect_url" mapstructure:"redirect_url"`
+}
+
+// OAuthProviderConfig — настройки одного OAuth-провайдера (используется в
+// AuthConfig.OAuthProviders).
+type OAuthProviderConfig struct {
 	ClientID     string `yaml:"client_id" mapstructure:"client_id"`
 	ClientSecret string `yaml:"client_secret" mapstructure:"client_secret"`
 	RedirectURL  string `yaml:"redirect_url" mapstructure:"redirect_url"`
@@ -144,10 +159,11 @@ func NewDefaultConfig() *Config {
 			},
 		},
 		Auth: AuthConfig{
-			Type:       "none",
-			TokenTTL:   24 * time.Hour,
-			BCryptCost: 10,
-			SessionTTL: 24 * time.Hour,
+			Type:           "none",
+			TokenTTL:       24 * time.Hour,
+			BCryptCost:     10,
+			SessionTTL:     24 * time.Hour,
+			PasswordHasher: "auto",
 		},
 		Worker: WorkerConfig{
 			Interval:     time.Minute,
@@ -245,6 +261,7 @@ func loadFromFile(path string) (*Config, error) {
 	v.SetDefault("auth.token_ttl", def.Auth.TokenTTL)
 	v.SetDefault("auth.bcrypt_cost", def.Auth.BCryptCost)
 	v.SetDefault("auth.session_ttl", def.Auth.SessionTTL)
+	v.SetDefault("auth.password_hasher", def.Auth.PasswordHasher)
 	v.SetDefault("server.cookie_secure", def.Server.CookieSecure)
 
 	v.SetDefault("worker.enabled", def.Worker.Enabled)
@@ -271,7 +288,7 @@ func loadFromFile(path string) (*Config, error) {
 		"storage.postgres.dsn", "storage.postgres.max_open_conns",
 		"storage.postgres.max_idle_conns", "storage.postgres.conn_max_lifetime",
 		"auth.type", "auth.secret", "auth.tenant_default", "auth.author_default",
-		"auth.token_ttl", "auth.bcrypt_cost", "auth.session_ttl",
+		"auth.token_ttl", "auth.bcrypt_cost", "auth.session_ttl", "auth.password_hasher",
 		"server.cookie_secure", "server.cookie_domain",
 		"auth.oauth.provider", "auth.oauth.client_id",
 		"auth.oauth.client_secret", "auth.oauth.redirect_url",
@@ -362,6 +379,12 @@ func (c *Config) Validate() error {
 		}
 		if c.Auth.SessionTTL > 0 && (c.Auth.SessionTTL < 5*time.Minute || c.Auth.SessionTTL > 720*time.Hour) {
 			return fmt.Errorf("%w: auth.session_ttl must be in [5m, 720h]", core.ErrConfigInvalid)
+		}
+		switch c.Auth.PasswordHasher {
+		case "", "auto", "argon2id", "bcrypt":
+			// ok
+		default:
+			return fmt.Errorf("%w: auth.password_hasher must be auto|argon2id|bcrypt", core.ErrConfigInvalid)
 		}
 	}
 	return nil

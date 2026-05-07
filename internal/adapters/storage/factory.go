@@ -23,11 +23,12 @@ func (nopCloser) Close() error { return nil }
 // Bundle объединяет все репозитории, открытые поверх одного storage backend.
 // Для fs-режима Users и Tokens равны nil (FS не поддерживает users).
 type Bundle struct {
-	Posts    core.PostRepository
-	Users    core.UserRepository    // nil for fs
-	Tokens   core.TokenRepository   // nil for fs
-	Sessions core.SessionRepository // nil for fs (and nil during F4b T-2 in-progress)
-	Closer   io.Closer
+	Posts         core.PostRepository
+	Users         core.UserRepository         // nil for fs
+	Tokens        core.TokenRepository        // nil for fs
+	Sessions      core.SessionRepository      // nil for fs (and nil during F4b T-2 in-progress)
+	OAuthAccounts core.OAuthAccountRepository // nil for fs
+	Closer        io.Closer
 }
 
 // OpenBundle возвращает Bundle по cfg.Storage.Type.
@@ -58,7 +59,7 @@ func OpenBundle(cfg *config.Config) (*Bundle, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &Bundle{Posts: repo, Users: repo.Users(), Tokens: repo.Tokens(), Sessions: repo.Sessions(), Closer: repo}, nil
+		return &Bundle{Posts: repo, Users: repo.Users(), Tokens: repo.Tokens(), Sessions: repo.Sessions(), OAuthAccounts: repo.OAuthAccounts(), Closer: repo}, nil
 	case "postgres":
 		if cfg.Storage.Postgres.DSN == "" {
 			return nil, errors.Join(core.ErrConfigInvalid, errors.New("storage.postgres.dsn required"))
@@ -72,7 +73,7 @@ func OpenBundle(cfg *config.Config) (*Bundle, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &Bundle{Posts: repo, Users: repo.Users(), Tokens: repo.Tokens(), Sessions: repo.Sessions(), Closer: repo}, nil
+		return &Bundle{Posts: repo, Users: repo.Users(), Tokens: repo.Tokens(), Sessions: repo.Sessions(), OAuthAccounts: repo.OAuthAccounts(), Closer: repo}, nil
 	default:
 		return nil, fmt.Errorf("%w: unknown storage.type %q", core.ErrConfigInvalid, cfg.Storage.Type)
 	}

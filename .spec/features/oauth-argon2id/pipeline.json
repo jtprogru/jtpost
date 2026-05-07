@@ -1,0 +1,21 @@
+{
+  "feature": "oauth-argon2id",
+  "phase": "done",
+  "created_at": "2026-05-07T09:06:41Z",
+  "current_artifact": null,
+  "history": [
+    {"phase": "explore", "artifact": ".spec/features/oauth-argon2id/explore.md", "approved_at": "2026-05-07T09:08:23Z"},
+    {"phase": "requirements", "artifact": ".spec/features/oauth-argon2id/requirements.md", "approved_at": "2026-05-07T09:10:02Z"},
+    {"phase": "design", "artifact": ".spec/features/oauth-argon2id/design.md", "approved_at": "2026-05-07T09:11:37Z"},
+    {"phase": "task-plan", "artifact": ".spec/features/oauth-argon2id/task-plan.md", "approved_at": "2026-05-07T09:13:07Z"},
+    {"phase": "implementation", "artifact": ".spec/features/oauth-argon2id/implementation.md", "approved_at": "2026-05-07T09:30:19Z"},
+    {"phase": "review", "artifact": ".spec/features/oauth-argon2id/review.md", "approved_at": "2026-05-07T09:31:20Z"}
+  ],
+  "review_base_commit": "086541b5ab5ea62239ea400561f68e0c83a02488",
+  "branch": "feature/oauth-argon2id",
+  "worktree": null,
+  "last_completed_task": null,
+  "finish_action": null,
+  "finished_at": null,
+  "finish_base": null
+}

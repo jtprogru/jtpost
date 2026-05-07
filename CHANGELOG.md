@@ -7,6 +7,53 @@
 
 ## [Неопубликовано]
 
+### F4c: OAuth GitHub + Argon2id (закрытие B.2)
+
+**Добавлено:**
+- **PasswordHasher abstraction** (`internal/core/password_hasher.go`):
+  - `PasswordHasher` interface (`Hash/Verify/NeedsRehash`).
+  - `Argon2idHasher` — default, OWASP 2024 baseline (time=1, mem=64MB, threads=4, keyLen=32, saltLen=16). Format `$argon2id$v=19$m=65536,t=1,p=4$<b64-salt>$<b64-hash>`.
+  - `LegacyBcryptHasher` — read-only verify для F4a-hashes.
+  - `MultiHasher` — detection by prefix (`$2a$/$2b$/$2y$` → bcrypt; `$argon2id$` → argon2id). Hash() всегда argon2id.
+  - `HasherFromConfig(string)` helper.
+- **AuthService integration**: `NewAuthService` принимает `PasswordHasher` (вместо `bcryptCost int`). `CreateUser` хеширует через hasher. `VerifyPassword` отклоняет OAuth-only users (PasswordHash=""). `Login` после verify auto-rehash legacy bcrypt в Argon2id silent через goroutine.
+- **`AuthService.IssueSessionForUser(ctx, user, ttl)`** — новый метод для создания session без password verify (используется в OAuth flow).
+- **OAuth domain**:
+  - `core.OAuthAccount{ID, UserID, Provider, ExternalID, Email, CreatedAt}`.
+  - `core.OAuthAccountRepository` interface (GetByExternalID/Create/ListByUser/Delete).
+  - `core.OAuthProvider` interface (Name/AuthorizeURL/Exchange/FetchUserInfo).
+  - `core.OAuthService` — domain logic с linking: `BuildAuthorizeURL`, `HandleCallback` (existing oauth_account → re-login; existing user-by-email → link; иначе → new OAuth-only user с PasswordHash="").
+- **GitHubProvider** (`internal/core/oauth_providers/github.go`) — реализация на `golang.org/x/oauth2/github`. Scope `user:email`. FetchUserInfo читает `/user` и `/user/emails`, выбирает primary verified email. Без verified email → `ErrValidation`.
+- **Миграция `0004_oauth_accounts.sql`** для SQLite + Postgres: FK ON DELETE CASCADE, UNIQUE(provider, external_id), index по user_id.
+- **SQLite + Postgres адаптеры** реализуют OAuthAccountRepository через `(*PostRepository).OAuthAccounts()` фасад.
+- **`Bundle.OAuthAccounts`** — расширен.
+- **HTTP handlers** (`internal/adapters/httpapi/oauth_handlers.go`):
+  - `GET /api/auth/oauth/{provider}` — генерирует state, set-cookie `jtpost_oauth_state` (Max-Age=600, HttpOnly+Secure+SameSite=Lax+Path=/api/auth/oauth/), 302 → provider authorize URL.
+  - `GET /api/auth/oauth/{provider}/callback?code=&state=` — проверка state через `subtle.ConstantTimeCompare`, exchange code, fetch user info, link/create user, выдача session-cookie + 302 → `/`.
+  - Unknown provider → 404. State mismatch → 400.
+- **Middleware skip-list**: `/api/auth/oauth/*` (prefix-skip) добавлен в RequireAuth и CSRF middleware.
+- **Config**:
+  - `Auth.PasswordHasher` ("auto" default | "argon2id" | "bcrypt"). Validate() range check.
+  - `Auth.OAuthProviders map[string]OAuthProviderConfig` — multi-provider scaffold. F4c регистрирует только `github` (Google/Yandex follow same pattern).
+- **`internal/cli/serve.go`**: при `auth.type=token` создаёт OAuthService с зарегистрированными провайдерами; передаёт в HTTP server.
+
+**Backward-compat:** existing F4a bcrypt-passwords продолжают работать через MultiHasher; auto-rehash при login. F4b cookie-sessions без изменений. `auth.type=none` → F1-stub.
+
+**Migration path:**
+1. (Опц.) обновить `auth.password_hasher: auto` (default).
+2. Зарегистрировать GitHub OAuth App, добавить в `.jtpost.yaml`:
+   ```yaml
+   auth:
+     oauth_providers:
+       github:
+         client_id: "<GitHub Client ID>"
+         client_secret: "<GitHub Client Secret>"
+         redirect_url: "https://your-domain/api/auth/oauth/github/callback"
+   ```
+3. Frontend: ссылка "Login with GitHub" → `GET /api/auth/oauth/github` → user redirected.
+
+**Отложено:** Google/Yandex providers (одинаковый pattern), audit_log, password reset, 2FA, per-channel RBAC.
+
 ### F4b: Web Sessions + CSRF (cookie-based auth)
 
 **Добавлено:**

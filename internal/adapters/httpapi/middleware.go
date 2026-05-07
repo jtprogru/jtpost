@@ -166,14 +166,20 @@ func SessionMiddleware(svc *core.AuthService) func(http.Handler) http.Handler {
 	}
 }
 
-// csrfSkipPaths — endpoints, для которых CSRF не проверяется (login сам
-// устанавливает session, csrf — обновляет CSRF-token).
+// csrfSkipPaths — endpoints, для которых CSRF не проверяется.
 //
 //nolint:gochecknoglobals
 var csrfSkipPaths = map[string]struct{}{
 	"/api/auth/login":  {},
 	"/api/auth/csrf":   {},
 	"/api/auth/logout": {},
+}
+
+// csrfSkipPrefixes — пути префикс-skip для CSRF (OAuth callback).
+//
+//nolint:gochecknoglobals
+var csrfSkipPrefixes = []string{
+	"/api/auth/oauth/",
 }
 
 // CSRFMiddleware применяет double-submit-pattern для state-changing запросов
@@ -188,6 +194,12 @@ func CSRFMiddleware() func(http.Handler) http.Handler {
 			if _, skip := csrfSkipPaths[r.URL.Path]; skip {
 				next.ServeHTTP(w, r)
 				return
+			}
+			for _, prefix := range csrfSkipPrefixes {
+				if strings.HasPrefix(r.URL.Path, prefix) {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			src, _ := core.AuthSourceFromContext(r.Context())
 			if src != core.AuthSourceSession {
@@ -217,14 +229,27 @@ var requireAuthSkipPaths = map[string]struct{}{
 	"/api/auth/logout": {},
 }
 
+// requireAuthSkipPrefixes — path-prefix, проходящие БЕЗ auth (OAuth-flow).
+//
+//nolint:gochecknoglobals
+var requireAuthSkipPrefixes = []string{
+	"/api/auth/oauth/",
+}
+
 // RequireAuthMiddleware — финальный gate. Если в ctx нет User — 401.
-// Skip-list: login, logout (logout идемпотентен).
+// Skip-list: login, logout (logout идемпотентен), /api/auth/oauth/* (OAuth flow).
 func RequireAuthMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if _, skip := requireAuthSkipPaths[r.URL.Path]; skip {
 				next.ServeHTTP(w, r)
 				return
+			}
+			for _, prefix := range requireAuthSkipPrefixes {
+				if strings.HasPrefix(r.URL.Path, prefix) {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			if _, ok := core.UserFromContext(r.Context()); !ok {
 				writeUnauthorized(w)

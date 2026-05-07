@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 
 // mockUserRepo — in-memory UserRepository для тестов.
 type mockUserRepo struct {
+	mu           sync.RWMutex
 	byID         map[uuid.UUID]*User
 	byEmail      map[string]*User // key = tenantID|email
 	createErr    error
@@ -30,6 +33,8 @@ func newMockUsers() *mockUserRepo {
 func (m *mockUserRepo) emailKey(t uuid.UUID, e string) string { return t.String() + "|" + e }
 
 func (m *mockUserRepo) GetByID(_ context.Context, id uuid.UUID) (*User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	m.getCallCount.Add(1)
 	u, ok := m.byID[id]
 	if !ok {
@@ -39,6 +44,8 @@ func (m *mockUserRepo) GetByID(_ context.Context, id uuid.UUID) (*User, error) {
 }
 
 func (m *mockUserRepo) GetByEmail(_ context.Context, t uuid.UUID, e string) (*User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	m.getCallCount.Add(1)
 	u, ok := m.byEmail[m.emailKey(t, e)]
 	if !ok {
@@ -48,6 +55,8 @@ func (m *mockUserRepo) GetByEmail(_ context.Context, t uuid.UUID, e string) (*Us
 }
 
 func (m *mockUserRepo) Create(_ context.Context, u *User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.createErr != nil {
 		return m.createErr
 	}
@@ -60,6 +69,8 @@ func (m *mockUserRepo) Create(_ context.Context, u *User) error {
 }
 
 func (m *mockUserRepo) Update(_ context.Context, u *User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if _, ok := m.byID[u.ID]; !ok {
 		return ErrNotFound
 	}
@@ -176,7 +187,7 @@ func newAuthSvc(t *testing.T) (*AuthService, *mockUserRepo, *mockTokenRepo, *aut
 	users := newMockUsers()
 	tokens := newMockTokens()
 	clk := &authClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-	return NewAuthService(users, tokens, newMockSessions(), bcrypt.MinCost, clk), users, tokens, clk
+	return NewAuthService(users, tokens, newMockSessions(), NewMultiHasher(), clk), users, tokens, clk
 }
 
 // mockSessionRepo — in-memory SessionRepository для тестов.
@@ -281,8 +292,9 @@ func TestAuthService_CreateUser_Success(t *testing.T) {
 	if user.Email != "alice@example.com" || user.Role != RoleOwner {
 		t.Errorf("got %+v", user)
 	}
-	if cost, _ := bcrypt.Cost([]byte(user.PasswordHash)); cost != bcrypt.MinCost {
-		t.Errorf("password cost=%d, want %d", cost, bcrypt.MinCost)
+	// F4c: password hashes теперь Argon2id (не bcrypt cost-based).
+	if !strings.HasPrefix(user.PasswordHash, "$argon2id$") {
+		t.Errorf("password hash format %q, want $argon2id$ prefix", user.PasswordHash)
 	}
 	if _, ok := users.byID[user.ID]; !ok {
 		t.Error("user not stored")
@@ -581,5 +593,97 @@ func TestAuthService_RefreshCSRF(t *testing.T) {
 	}
 	if newCSRF == oldCSRF || newCSRF == "" {
 		t.Errorf("CSRF should change: old=%q new=%q", oldCSRF, newCSRF)
+	}
+}
+
+func TestAuthService_VerifyPassword_OAuthOnly_Rejected(t *testing.T) {
+	svc, users, _, _ := newAuthSvc(t)
+	tenantID := uuid.New()
+	id, _ := uuid.NewV7()
+	users.byID[id] = &User{
+		ID:           id,
+		TenantID:     tenantID,
+		Email:        "oauth@example.com",
+		PasswordHash: "", // OAuth-only user
+		Role:         RoleAuthor,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	users.byEmail[users.emailKey(tenantID, "oauth@example.com")] = users.byID[id]
+	_, err := svc.VerifyPassword(context.Background(), tenantID, "oauth@example.com", "anything")
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("OAuth-only user verifyPassword: want ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestAuthService_Login_RehashLegacy(t *testing.T) {
+	svc, users, _, _ := newAuthSvc(t)
+	tenantID := uuid.New()
+	// Создать user с manual bcrypt-hash (имитация F4a-data).
+	bcryptHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	id, _ := uuid.NewV7()
+	users.byID[id] = &User{
+		ID:           id,
+		TenantID:     tenantID,
+		Email:        "old@example.com",
+		PasswordHash: string(bcryptHash),
+		Role:         RoleOwner,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	users.byEmail[users.emailKey(tenantID, "old@example.com")] = users.byID[id]
+
+	// Login через bcrypt-hashed password — должен success.
+	res, err := svc.Login(context.Background(), LoginInput{
+		TenantID: tenantID,
+		Email:    "old@example.com",
+		Password: "password123",
+	}, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.User == nil {
+		t.Fatal("user nil")
+	}
+	// Async rehash — ждём короткое время.
+	for i := 0; i < 50; i++ {
+		users.mu.RLock()
+		hash := users.byID[id].PasswordHash
+		users.mu.RUnlock()
+		if strings.HasPrefix(hash, "$argon2id$") {
+			return // rehash прошёл
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	users.mu.RLock()
+	finalHash := users.byID[id].PasswordHash
+	users.mu.RUnlock()
+	t.Errorf("rehash не произошёл: hash=%q", finalHash)
+}
+
+func TestAuthService_IssueSessionForUser_Roundtrip(t *testing.T) {
+	svc, users, _, _ := newAuthSvc(t)
+	user := &User{
+		ID:       uuid.New(),
+		TenantID: uuid.New(),
+		Email:    "x@y.com",
+		Role:     RoleEditor,
+	}
+	users.byID[user.ID] = user
+	users.byEmail[users.emailKey(user.TenantID, user.Email)] = user
+
+	res, err := svc.IssueSessionForUser(context.Background(), user, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Session == nil || res.RawToken == "" {
+		t.Fatal("incomplete result")
+	}
+	gotUser, role, _, err := svc.ValidateSession(context.Background(), res.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotUser.ID != user.ID || role != RoleEditor {
+		t.Errorf("user/role mismatch: %v / %s", gotUser.ID, role)
 	}
 }

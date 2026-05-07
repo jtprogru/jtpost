@@ -8,6 +8,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type OauthAccount struct {
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	Provider   string
+	ExternalID string
+	Email      string
+	CreatedAt  pgtype.Timestamptz
+}
+
 type Post struct {
 	ID             pgtype.UUID
 	TenantID       pgtype.UUID

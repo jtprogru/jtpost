@@ -73,22 +73,25 @@ var serveCmd = &cobra.Command{
 			log.Warn("⚠️  Telegram publisher не настроен (отсутствует конфигурация)")
 		}
 
-		// Создаём AuthService (nil если auth.type != token)
+		// Создаём AuthService и OAuthService (nil если auth.type != token)
 		var authSvc *core.AuthService
+		var oauthSvc *core.OAuthService
 		if cfg.Auth.Type == "token" {
 			if bundle.Users == nil || bundle.Tokens == nil {
 				return fmt.Errorf("auth.type=token requires sqlite or postgres storage")
 			}
-			authSvc = core.NewAuthService(bundle.Users, bundle.Tokens, bundle.Sessions, cfg.Auth.BCryptCost, core.SystemClock{})
+			authSvc = core.NewAuthService(bundle.Users, bundle.Tokens, bundle.Sessions, core.HasherFromConfig(cfg.Auth.PasswordHasher), core.SystemClock{})
+			oauthSvc = buildOAuthService(cfg, bundle, log)
 		}
 
 		// Создаём HTTP сервер с логгером
 		serverCfg := httpapi.ServerConfig{
-			Service:     service,
-			Publisher:   publisher,
-			AuthService: authSvc,
-			Logger:      log,
-			Config:      cfg,
+			Service:      service,
+			Publisher:    publisher,
+			AuthService:  authSvc,
+			OAuthService: oauthSvc,
+			Logger:       log,
+			Config:       cfg,
 		}
 		server := httpapi.NewServerWithConfig(serverCfg)
 

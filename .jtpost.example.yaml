@@ -50,11 +50,16 @@ auth:
   # session_ttl для cookie-based sessions (POST /api/auth/login).
   # Range [5m, 720h]. Default 24h.
   session_ttl: 24h
-  # oauth:
-  #   provider: github
-  #   client_id: ""
-  #   client_secret: ""
-  #   redirect_url: ""
+  # password_hasher: "auto" (default, MultiHasher: write Argon2id, read both) |
+  # "argon2id" | "bcrypt". Auto-rehash legacy bcrypt → Argon2id при login.
+  password_hasher: auto
+  # OAuth providers (F4c). Регистрация GitHub OAuth App обязательна.
+  # Endpoint: GET /api/auth/oauth/github → 302 на GitHub.
+  # oauth_providers:
+  #   github:
+  #     client_id: "<GitHub Client ID>"
+  #     client_secret: "<GitHub Client Secret>"
+  #     redirect_url: "https://your-domain/api/auth/oauth/github/callback"
 
 # Фоновый воркер для отложенных публикаций.
 worker:

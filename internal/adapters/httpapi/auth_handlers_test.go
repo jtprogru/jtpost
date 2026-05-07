@@ -15,7 +15,6 @@ import (
 	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/sqlite"
 	"github.com/jtprogru/jtpost/internal/core"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // setupHandler создаёт SQLite-репо + cfg + AuthService + один user.
@@ -28,7 +27,7 @@ func setupHandler(t *testing.T) (*core.AuthService, *config.Config, *core.User) 
 	}
 	t.Cleanup(func() { _ = repo.Close() })
 
-	svc := core.NewAuthService(repo.Users(), repo.Tokens(), repo.Sessions(), bcrypt.MinCost, core.SystemClock{})
+	svc := core.NewAuthService(repo.Users(), repo.Tokens(), repo.Sessions(), core.NewMultiHasher(), core.SystemClock{})
 	cfg := config.NewDefaultConfig()
 	cfg.Auth.TenantDefault = uuid.New()
 	cfg.Auth.AuthorDefault = uuid.New()
