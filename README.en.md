@@ -435,7 +435,6 @@ MIT
 ### For AI assistants
 
 - **[AGENTS.md](./AGENTS.md)** — AI assistant guide
-- **[QWEN.md](./QWEN.md)** — project context for AI
 
 ---
 
