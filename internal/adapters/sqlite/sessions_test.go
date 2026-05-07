@@ -11,11 +11,11 @@ import (
 	"github.com/jtprogru/jtpost/internal/core"
 )
 
-// newRepoWithSessions создаёт PostRepository, UserRepository, SessionRepository поверх одного DB.
-func newRepoWithSessions(t *testing.T) (*PostRepository, *UserRepository, *SessionRepository) {
+// newRepoWithSessions создаёт UserRepository, SessionRepository поверх одного DB.
+func newRepoWithSessions(t *testing.T) (*UserRepository, *SessionRepository) {
 	t.Helper()
 	r := newRepo(t)
-	return r, r.Users(), r.Sessions()
+	return r.Users(), r.Sessions()
 }
 
 func makeSession(userID uuid.UUID, prefix string) *core.Session {
@@ -32,7 +32,7 @@ func makeSession(userID uuid.UUID, prefix string) *core.Session {
 }
 
 func TestSQLiteSessionRepo_CRUD(t *testing.T) {
-	_, users, sessions := newRepoWithSessions(t)
+	users, sessions := newRepoWithSessions(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 
@@ -69,14 +69,14 @@ func TestSQLiteSessionRepo_CRUD(t *testing.T) {
 }
 
 func TestSQLiteSessionRepo_GetByPrefix_NotFound(t *testing.T) {
-	_, _, sessions := newRepoWithSessions(t)
+	_, sessions := newRepoWithSessions(t)
 	if _, err := sessions.GetByPrefix(context.Background(), "missing0"); !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
 
 func TestSQLiteSessionRepo_DeleteByUser(t *testing.T) {
-	_, users, sessions := newRepoWithSessions(t)
+	users, sessions := newRepoWithSessions(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 	u := makeUser(tenantID, "multi@example.com", core.RoleAuthor)
@@ -104,7 +104,7 @@ func TestSQLiteSessionRepo_DeleteByUser(t *testing.T) {
 }
 
 func TestSQLiteSessionRepo_CascadeDelete(t *testing.T) {
-	_, users, sessions := newRepoWithSessions(t)
+	users, sessions := newRepoWithSessions(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 	u := makeUser(tenantID, "cascade@example.com", core.RoleAuthor)
@@ -125,7 +125,7 @@ func TestSQLiteSessionRepo_CascadeDelete(t *testing.T) {
 }
 
 func TestSQLiteSessionRepo_UpdateLastUsedAt(t *testing.T) {
-	_, users, sessions := newRepoWithSessions(t)
+	users, sessions := newRepoWithSessions(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 	u := makeUser(tenantID, "lu@example.com", core.RoleAuthor)
@@ -153,7 +153,7 @@ func TestSQLiteSessionRepo_UpdateLastUsedAt(t *testing.T) {
 }
 
 func TestSQLiteSessionRepo_UpdateCSRFToken(t *testing.T) {
-	_, users, sessions := newRepoWithSessions(t)
+	users, sessions := newRepoWithSessions(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 	u := makeUser(tenantID, "csrf@example.com", core.RoleAuthor)

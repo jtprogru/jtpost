@@ -59,6 +59,8 @@ type OutboxRepository interface {
 
 // DefaultBackoffSchedule — exponential schedule per attempt index (0-based).
 // Если attempts превышает len(schedule) — берём последний.
+//
+//nolint:gochecknoglobals // экспортированный default для WorkerConfig.BackoffSchedule
 var DefaultBackoffSchedule = []time.Duration{
 	1 * time.Minute,
 	5 * time.Minute,
@@ -73,10 +75,7 @@ func ComputeBackoff(schedule []time.Duration, attempts int) time.Duration {
 	if len(schedule) == 0 {
 		return 1 * time.Minute
 	}
-	idx := attempts - 1
-	if idx < 0 {
-		idx = 0
-	}
+	idx := max(attempts-1, 0)
 	if idx >= len(schedule) {
 		idx = len(schedule) - 1
 	}

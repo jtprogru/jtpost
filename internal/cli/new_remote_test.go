@@ -20,7 +20,7 @@ func TestNew_RemoteMode_Success(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		var body map[string]interface{}
+		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["title"] != "Hello" {
 			t.Errorf("expected title=Hello, got %v", body["title"])

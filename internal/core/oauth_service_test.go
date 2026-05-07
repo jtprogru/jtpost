@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// mockOAuthAccountRepo
+// mockOAuthAccountRepo.
 type mockOAuthAccountRepo struct {
 	byID    map[uuid.UUID]*OAuthAccount
 	byExtID map[string]*OAuthAccount // key = provider|external_id
@@ -21,6 +21,7 @@ func newMockOAuthAccounts() *mockOAuthAccountRepo {
 	return &mockOAuthAccountRepo{byID: map[uuid.UUID]*OAuthAccount{}, byExtID: map[string]*OAuthAccount{}}
 }
 
+//nolint:funcorder // pure helper used by mock impls — keeping at top for readability.
 func (m *mockOAuthAccountRepo) extKey(provider, ext string) string { return provider + "|" + ext }
 
 func (m *mockOAuthAccountRepo) GetByExternalID(_ context.Context, provider, ext string) (*OAuthAccount, error) {
@@ -60,7 +61,7 @@ func (m *mockOAuthAccountRepo) Delete(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// mockOAuthProvider
+// mockOAuthProvider.
 type mockOAuthProvider struct {
 	name        string
 	authorize   string

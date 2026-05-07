@@ -44,7 +44,7 @@ func (m *mockOutbox) ClaimNext(_ context.Context, now time.Time) (*OutboxEntry, 
 			return e, nil
 		}
 	}
-	return nil, nil
+	return nil, nil //nolint:nilnil // sentinel "очередь пуста"
 }
 
 func (m *mockOutbox) MarkDone(_ context.Context, id uuid.UUID, now time.Time) error {
@@ -147,7 +147,7 @@ func (m *mockPosts) Update(_ context.Context, p *Post) error {
 	return nil
 }
 
-// minimal stubs to satisfy PostRepository interface
+// minimal stubs to satisfy PostRepository interface.
 func (m *mockPosts) Create(_ context.Context, p *Post) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

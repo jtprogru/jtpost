@@ -13,10 +13,10 @@ import (
 
 // newRepoWithOAuth создаёт PostRepository, UserRepository, OAuthAccountRepository
 // поверх одного DB.
-func newRepoWithOAuth(t *testing.T) (*PostRepository, *UserRepository, *OAuthAccountRepository) {
+func newRepoWithOAuth(t *testing.T) (*UserRepository, *OAuthAccountRepository) {
 	t.Helper()
 	r := newRepo(t)
-	return r, r.Users(), r.OAuthAccounts()
+	return r.Users(), r.OAuthAccounts()
 }
 
 func makeOAuthAccount(userID uuid.UUID, provider, externalID, email string) *core.OAuthAccount {
@@ -32,7 +32,7 @@ func makeOAuthAccount(userID uuid.UUID, provider, externalID, email string) *cor
 }
 
 func TestSQLiteOAuthRepo_CRUD(t *testing.T) {
-	_, users, oauth := newRepoWithOAuth(t)
+	users, oauth := newRepoWithOAuth(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 
@@ -77,14 +77,14 @@ func TestSQLiteOAuthRepo_CRUD(t *testing.T) {
 }
 
 func TestSQLiteOAuthRepo_GetByExternalID_NotFound(t *testing.T) {
-	_, _, oauth := newRepoWithOAuth(t)
+	_, oauth := newRepoWithOAuth(t)
 	if _, err := oauth.GetByExternalID(context.Background(), "github", "missing"); !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
 
 func TestSQLiteOAuthRepo_DuplicateExternalID(t *testing.T) {
-	_, users, oauth := newRepoWithOAuth(t)
+	users, oauth := newRepoWithOAuth(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 
@@ -104,7 +104,7 @@ func TestSQLiteOAuthRepo_DuplicateExternalID(t *testing.T) {
 }
 
 func TestSQLiteOAuthRepo_CascadeDelete(t *testing.T) {
-	_, users, oauth := newRepoWithOAuth(t)
+	users, oauth := newRepoWithOAuth(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 
@@ -133,7 +133,7 @@ func TestSQLiteOAuthRepo_CascadeDelete(t *testing.T) {
 }
 
 func TestSQLiteOAuthRepo_ListByUser_OrderAndMulti(t *testing.T) {
-	_, users, oauth := newRepoWithOAuth(t)
+	users, oauth := newRepoWithOAuth(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 

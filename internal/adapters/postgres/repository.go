@@ -105,6 +105,7 @@ func (r *PostRepository) Close() error {
 
 // ---- helpers ----
 
+//nolint:funcorder // helper conversion sits in dedicated section with its peers.
 func (r *PostRepository) postFromRow(row pgdb.Post) (*core.Post, error) {
 	post := &core.Post{
 		ID:          core.PostID(fromPgUUID(row.ID)),

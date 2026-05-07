@@ -20,6 +20,8 @@ import (
 )
 
 // fixedTenantID — стабильный tenant для тестов.
+//
+//nolint:gochecknoglobals // тестовый константный fixture
 var fixedTenantID = uuid.MustParse("11111111-1111-1111-1111-111111111111")
 
 func testCtx() context.Context {
@@ -389,7 +391,7 @@ type migratableStub struct {
 
 func (m *migratableStub) ImportPosts(ctx context.Context, posts []*core.Post) error {
 	for _, p := range posts {
-		if err := m.FileSystemPostRepository.Create(ctx, p); err != nil {
+		if err := m.Create(ctx, p); err != nil {
 			return err
 		}
 	}

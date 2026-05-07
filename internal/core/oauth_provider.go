@@ -1,8 +1,3 @@
-// Package core: OAuthProvider интерфейс для F4c.
-//
-// Конкретные реализации (GitHub, GitLab, …) живут в подпакете
-// internal/core/oauth_providers, чтобы не тянуть в core зависимости
-// конкретных HTTP/OAuth2 клиентов.
 package core
 
 import "context"

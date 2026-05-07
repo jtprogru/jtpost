@@ -29,10 +29,9 @@ const (
 	tokenAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
-//nolint:gochecknoglobals
 var sessionFormatRegex = regexp.MustCompile(`^jts_[A-Za-z0-9]{8}_[A-Za-z0-9]{32}$`)
 
-var tokenFormatRegex = regexp.MustCompile(`^jtpat_[A-Za-z0-9]{8}_[A-Za-z0-9]{24}$`) //nolint:gochecknoglobals
+var tokenFormatRegex = regexp.MustCompile(`^jtpat_[A-Za-z0-9]{8}_[A-Za-z0-9]{24}$`)
 
 // AuthService инкапсулирует auth-логику: пользователи, PAT, sessions, RBAC.
 type AuthService struct {
@@ -193,6 +192,7 @@ func (s *AuthService) ValidateToken(ctx context.Context, raw string) (*User, Rol
 		return nil, "", ErrUnauthorized
 	}
 	// async update LastUsedAt — не блокировать запрос
+	//nolint:gosec,contextcheck // G118+contextcheck: detached lifecycle (caller's request ctx может отмениться раньше)
 	go func(tokID uuid.UUID, t time.Time) {
 		_ = s.tokens.UpdateLastUsedAt(context.Background(), tokID, t)
 	}(tok.ID, s.clock.Now().UTC())
@@ -249,7 +249,7 @@ func randomString(n int) (string, error) {
 // O(1) lookup по prefix.
 func (s *AuthService) Login(ctx context.Context, in LoginInput, ttl time.Duration) (*LoginResult, error) {
 	if s.sessions == nil {
-		return nil, fmt.Errorf("sessions repository not configured")
+		return nil, errors.New("sessions repository not configured")
 	}
 	user, err := s.VerifyPassword(ctx, in.TenantID, in.Email, in.Password)
 	if err != nil {
@@ -257,6 +257,7 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput, ttl time.Duratio
 	}
 	// Auto-rehash legacy bcrypt passwords в Argon2id silently.
 	if s.hasher.NeedsRehash(user.PasswordHash) {
+		//nolint:gosec,contextcheck // G118+contextcheck: detached lifecycle для async rehash
 		go func(u User, password string) {
 			newHash, hErr := s.hasher.Hash(password)
 			if hErr != nil {
@@ -264,7 +265,7 @@ func (s *AuthService) Login(ctx context.Context, in LoginInput, ttl time.Duratio
 			}
 			u.PasswordHash = newHash
 			u.UpdatedAt = s.clock.Now().UTC()
-			_ = s.users.Update(context.Background(), &u) //nolint:contextcheck
+			_ = s.users.Update(context.Background(), &u)
 		}(*user, in.Password)
 	}
 	return s.issueSessionForUserAt(ctx, user, ttl)
@@ -280,9 +281,10 @@ func (s *AuthService) IssueSessionForUser(ctx context.Context, user *User, ttl t
 }
 
 // issueSessionForUserAt — общая логика создания session.
+//nolint:funcorder // helper sits next to its public callers IssueSessionForUser/Login для читаемости.
 func (s *AuthService) issueSessionForUserAt(ctx context.Context, user *User, ttl time.Duration) (*LoginResult, error) {
 	if s.sessions == nil {
-		return nil, fmt.Errorf("sessions repository not configured")
+		return nil, errors.New("sessions repository not configured")
 	}
 	now := s.clock.Now().UTC()
 	expiresAt := now.Add(ttl)
@@ -337,7 +339,7 @@ func (s *AuthService) issueSessionForUserAt(ctx context.Context, user *User, ttl
 // Logout удаляет session. Не-найденная session — no-op (idempotent).
 func (s *AuthService) Logout(ctx context.Context, sessionID uuid.UUID) error {
 	if s.sessions == nil {
-		return fmt.Errorf("sessions repository not configured")
+		return errors.New("sessions repository not configured")
 	}
 	if err := s.sessions.Delete(ctx, sessionID); err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -375,8 +377,9 @@ func (s *AuthService) ValidateSession(ctx context.Context, raw string) (*User, R
 	if err != nil {
 		return nil, "", nil, ErrUnauthorized
 	}
+	//nolint:gosec,contextcheck // G118+contextcheck: detached lifecycle для async session touch
 	go func(id uuid.UUID, t time.Time) {
-		_ = s.sessions.UpdateLastUsedAt(context.Background(), id, t) //nolint:contextcheck // intentional: detached lifecycle
+		_ = s.sessions.UpdateLastUsedAt(context.Background(), id, t)
 	}(sess.ID, s.clock.Now().UTC())
 	return user, user.Role, sess, nil
 }
@@ -384,7 +387,7 @@ func (s *AuthService) ValidateSession(ctx context.Context, raw string) (*User, R
 // RefreshCSRF генерирует новый CSRF-token для существующей session.
 func (s *AuthService) RefreshCSRF(ctx context.Context, sessionID uuid.UUID) (string, error) {
 	if s.sessions == nil {
-		return "", fmt.Errorf("sessions repository not configured")
+		return "", errors.New("sessions repository not configured")
 	}
 	csrf, err := randomString(csrfTokenLen)
 	if err != nil {

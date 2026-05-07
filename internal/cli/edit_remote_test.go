@@ -19,7 +19,7 @@ func TestEdit_RemoteMode_Success(t *testing.T) {
 		if r.Method != http.MethodPatch {
 			t.Errorf("expected PATCH, got %s", r.Method)
 		}
-		var body map[string]interface{}
+		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["title"] != "NewTitle" {
 			t.Errorf("expected title=NewTitle, got %v", body["title"])
@@ -80,9 +80,9 @@ func TestEdit_RemoteMode_TagsReplace(t *testing.T) {
 	postID := uuid.New()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/posts/"+postID.String(), func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]interface{}
+		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		tags, ok := body["tags"].([]interface{})
+		tags, ok := body["tags"].([]any)
 		if !ok || len(tags) != 2 {
 			t.Errorf("expected 2 tags, got %v", body["tags"])
 		}

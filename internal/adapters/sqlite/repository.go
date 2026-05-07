@@ -412,7 +412,7 @@ func nullableTime(t *time.Time) sql.NullString {
 
 func parseTime(s string) (*time.Time, error) {
 	if s == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // empty input → nil time, no error (optional field)
 	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
@@ -423,7 +423,7 @@ func parseTime(s string) (*time.Time, error) {
 
 func parseTimeNS(ns sql.NullString) (*time.Time, error) {
 	if !ns.Valid || ns.String == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // null/empty → nil time, no error
 	}
 	return parseTime(ns.String)
 }

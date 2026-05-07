@@ -13,10 +13,10 @@ import (
 )
 
 // newRepoWithUsers создаёт PostRepository, UserRepository, TokenRepository поверх одного DB.
-func newRepoWithUsers(t *testing.T) (*PostRepository, *UserRepository, *TokenRepository) {
+func newRepoWithUsers(t *testing.T) (*UserRepository, *TokenRepository) {
 	t.Helper()
 	r := newRepo(t)
-	return r, r.Users(), r.Tokens()
+	return r.Users(), r.Tokens()
 }
 
 func makeToken(userID uuid.UUID, prefix, name string) *core.APIToken {
@@ -32,7 +32,7 @@ func makeToken(userID uuid.UUID, prefix, name string) *core.APIToken {
 }
 
 func TestSQLiteTokenRepo_CRUD(t *testing.T) {
-	_, users, tokens := newRepoWithUsers(t)
+	users, tokens := newRepoWithUsers(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 
@@ -71,14 +71,14 @@ func TestSQLiteTokenRepo_CRUD(t *testing.T) {
 }
 
 func TestSQLiteTokenRepo_GetByPrefix_NotFound(t *testing.T) {
-	_, _, tokens := newRepoWithUsers(t)
+	_, tokens := newRepoWithUsers(t)
 	if _, err := tokens.GetByPrefix(context.Background(), "missing0"); !errors.Is(err, core.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
 }
 
 func TestSQLiteTokenRepo_CascadeDelete(t *testing.T) {
-	_, users, tokens := newRepoWithUsers(t)
+	users, tokens := newRepoWithUsers(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 	u := makeUser(tenantID, "cascade@example.com", core.RoleAuthor)
@@ -110,7 +110,7 @@ func TestSQLiteTokenRepo_CascadeDelete(t *testing.T) {
 }
 
 func TestSQLiteTokenRepo_UpdateLastUsedAt(t *testing.T) {
-	_, users, tokens := newRepoWithUsers(t)
+	users, tokens := newRepoWithUsers(t)
 	ctx := context.Background()
 	tenantID := uuid.New()
 	u := makeUser(tenantID, "lu@example.com", core.RoleAuthor)

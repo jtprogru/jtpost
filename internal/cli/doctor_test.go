@@ -134,7 +134,7 @@ func TestCheckGitRepo_NotARepo(t *testing.T) {
 
 func TestCheckGitRepo_CleanRepo(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := initBareGitRepo(t, dir); err != nil {
+	if err := initBareGitRepo(t, dir); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.NewDefaultConfig()
@@ -151,7 +151,7 @@ func TestCheckGitRepo_CleanRepo(t *testing.T) {
 
 func TestCheckGitRepo_DirtyRepo(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := initBareGitRepo(t, dir); err != nil {
+	if err := initBareGitRepo(t, dir); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "untracked.md"), []byte("x"), 0o644); err != nil {
@@ -170,10 +170,10 @@ func TestCheckGitRepo_DirtyRepo(t *testing.T) {
 }
 
 // initBareGitRepo инициализирует non-bare git-репо в dir для doctor-тестов.
-func initBareGitRepo(t *testing.T, dir string) (string, error) {
+func initBareGitRepo(t *testing.T, dir string) error {
 	t.Helper()
 	if _, err := git.PlainInit(dir, false); err != nil {
-		return "", err
+		return err
 	}
-	return dir, nil
+	return nil
 }

@@ -84,7 +84,7 @@ func (h *Argon2idHasher) Verify(hash, password string) error {
 	if err != nil {
 		return ErrUnauthorized
 	}
-	got := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(expected)))
+	got := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(expected))) //nolint:gosec // G115: len(expected) ограничен Argon2 hash длиной (32 байта)
 	if subtle.ConstantTimeCompare(got, expected) != 1 {
 		return ErrUnauthorized
 	}

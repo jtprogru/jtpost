@@ -14,7 +14,7 @@ import (
 // TestAPIV1_LoginAliasWorks — POST /api/v1/auth/login работает идентично
 // /api/auth/login (sanity check для v1 alias mechanism).
 func TestAPIV1_LoginAliasWorks(t *testing.T) {
-	svc, cfg, _ := setupHandler(t)
+	svc, cfg := setupHandler(t)
 	server := NewServerWithConfig(ServerConfig{
 		AuthService: svc,
 		Config:      cfg,

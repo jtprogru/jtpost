@@ -31,7 +31,7 @@ func (m *mockOutboxRepo) Enqueue(_ context.Context, e *core.OutboxEntry) error {
 	return nil
 }
 func (m *mockOutboxRepo) ClaimNext(context.Context, time.Time) (*core.OutboxEntry, error) {
-	return nil, nil
+	return nil, nil //nolint:nilnil // sentinel
 }
 func (m *mockOutboxRepo) MarkDone(context.Context, uuid.UUID, time.Time) error { return nil }
 func (m *mockOutboxRepo) MarkRetry(context.Context, uuid.UUID, int, time.Time, string, time.Time) error {

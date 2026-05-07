@@ -7,6 +7,31 @@
 
 ## [Неопубликовано]
 
+### F-cleanup-lint: устранение всех lint-замечаний (44 → 0)
+
+**Исправлено реальной правкой кода (28):**
+- nolintlint (4): убраны устаревшие //nolint после рефакторинга в `auth_service.go`.
+- perfsprint (3): `fmt.Errorf("…")` без форматирования → `errors.New("…")` для "sessions repository not configured".
+- errorlint (1): `err != context.Canceled` → `errors.Is(err, context.Canceled)` в `worker.go`.
+- modernize (4): `interface{}` → `any` в edit/new remote tests; `if idx < 0 …` → `max(attempts-1, 0)` в `outbox.go`.
+- intrange (2): `for i := 0; i < N; i++` без use `i` → `for range N`.
+- unparam (6): убраны неиспользуемые return-values из тестовых хелперов (`setupHandler`, `setupOAuth`, `newRepoWithSessions/Users/OAuth`, `initBareGitRepo`).
+- godot (3) + godoclint (2): точки в комментариях; `// Package core: …` → `// OAuthProvider …` (один package godoc на пакет).
+- revive (1): `r *http.Request` без use → `_`.
+- staticcheck (1): убран лишний embedded selector `m.FileSystemPostRepository.Create` → `m.Create`.
+- unconvert (1): `http.HandlerFunc(CSRFHandler(…))` уже HandlerFunc — конверсия лишняя.
+- contextcheck (1): протянут ctx в `gitrepo.GitDecorator.Count`.
+
+**Подавлено `//nolint` с явной причиной (16):**
+- gosec G118 (3) + contextcheck (3) на async-горутинах в `auth_service.go` — detached lifecycle (async update LastUsedAt / rehash); request ctx может отмениться раньше background-операции.
+- gosec G115 (1): `uint32(len(expected))` для Argon2 ограничен hash-длиной.
+- contextcheck (1): doctor.go использует `openRepo` который применяет миграции на Background ctx — это startup-операция.
+- nilnil (3): `outbox.ClaimNext` возвращает `(nil, nil)` как sentinel "очередь пуста"; `parseTime/parseTimeNS` — empty input → nil time.
+- gochecknoglobals (2): `DefaultBackoffSchedule` (экспортированный default), `fixedTenantID` (тестовый константный fixture).
+- funcorder (4): private helpers сидят рядом с публичными вызывающими методами для читаемости.
+
+**Verify:** `task lint` → 0 issues. `task test`, `task test:race`, `task build` → GREEN.
+
 ### B.5c: Worker hardening — stuck-recovery sweep + Postgres integration tests
 
 **Добавлено:**

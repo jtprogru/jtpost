@@ -19,7 +19,7 @@ import (
 )
 
 // setupHandler создаёт SQLite-репо + cfg + AuthService + один user.
-func setupHandler(t *testing.T) (*core.AuthService, *config.Config, *core.User) {
+func setupHandler(t *testing.T) (*core.AuthService, *config.Config) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "auth.db")
 	repo, err := sqlite.NewSQLitePostRepository(sqlite.Config{DSN: dbPath})
@@ -35,20 +35,19 @@ func setupHandler(t *testing.T) (*core.AuthService, *config.Config, *core.User) 
 	cfg.Auth.SessionTTL = time.Hour
 	cfg.Server.CookieSecure = false // для unit-тестов
 
-	user, err := svc.CreateUser(context.Background(), core.CreateUserInput{
+	if _, err := svc.CreateUser(context.Background(), core.CreateUserInput{
 		TenantID: cfg.Auth.TenantDefault,
 		Email:    "owner@example.com",
 		Password: "password123",
 		Role:     core.RoleOwner,
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
-	return svc, cfg, user
+	return svc, cfg
 }
 
 func TestLoginHandler_Success(t *testing.T) {
-	svc, cfg, _ := setupHandler(t)
+	svc, cfg := setupHandler(t)
 	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -87,7 +86,7 @@ func TestLoginHandler_Success(t *testing.T) {
 }
 
 func TestLoginHandler_WrongPassword(t *testing.T) {
-	svc, cfg, _ := setupHandler(t)
+	svc, cfg := setupHandler(t)
 	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "wrong"})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -98,7 +97,7 @@ func TestLoginHandler_WrongPassword(t *testing.T) {
 }
 
 func TestLogoutHandler_NoCookie_Idempotent(t *testing.T) {
-	svc, cfg, _ := setupHandler(t)
+	svc, cfg := setupHandler(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	rec := httptest.NewRecorder()
 	LogoutHandler(svc, cfg)(rec, req)
@@ -115,7 +114,7 @@ func TestLogoutHandler_NoCookie_Idempotent(t *testing.T) {
 }
 
 func TestCSRFHandler_NoSession_401(t *testing.T) {
-	svc, _, _ := setupHandler(t)
+	svc, _ := setupHandler(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/csrf", nil)
 	rec := httptest.NewRecorder()
 	CSRFHandler(svc)(rec, req)
@@ -125,7 +124,7 @@ func TestCSRFHandler_NoSession_401(t *testing.T) {
 }
 
 func TestCSRFHandler_WithSession_NewCSRF(t *testing.T) {
-	svc, cfg, _ := setupHandler(t)
+	svc, cfg := setupHandler(t)
 	// Login → получить session
 	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
@@ -147,7 +146,7 @@ func TestCSRFHandler_WithSession_NewCSRF(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/csrf", nil)
 	req.AddCookie(sessCookie)
 	rec := httptest.NewRecorder()
-	chain := SessionMiddleware(svc)(http.HandlerFunc(CSRFHandler(svc)))
+	chain := SessionMiddleware(svc)(CSRFHandler(svc))
 	chain.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -164,7 +163,7 @@ func TestCSRFHandler_WithSession_NewCSRF(t *testing.T) {
 }
 
 func TestE2E_LoginThenAuthenticated_GET(t *testing.T) {
-	svc, cfg, _ := setupHandler(t)
+	svc, cfg := setupHandler(t)
 
 	// Login
 	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})

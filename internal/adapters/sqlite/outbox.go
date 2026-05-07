@@ -74,7 +74,7 @@ func (r *OutboxRepository) ClaimNext(ctx context.Context, now time.Time) (*core.
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // (nil, nil) — sentinel "очередь пуста"
 		}
 		return nil, err
 	}

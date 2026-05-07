@@ -214,9 +214,9 @@ func (d *GitDecorator) ImportPosts(ctx context.Context, posts []*core.Post) erro
 
 // Count проксирует в MigratableRepository inner или, если inner
 // его не поддерживает (FS), считает .md-файлы во всех tenant-подкаталогах.
-func (d *GitDecorator) Count(_ context.Context) (int64, error) {
+func (d *GitDecorator) Count(ctx context.Context) (int64, error) {
 	if mig, ok := d.inner.(core.MigratableRepository); ok {
-		return mig.Count(context.Background())
+		return mig.Count(ctx)
 	}
 	var count int64
 	err := filepath.WalkDir(d.postsDir, func(_ string, entry fs.DirEntry, err error) error {

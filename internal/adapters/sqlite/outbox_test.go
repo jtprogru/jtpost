@@ -195,7 +195,7 @@ func TestSQLiteOutbox_List(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
 	box := r.Outbox()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_ = box.Enqueue(ctx, makeOutboxEntry())
 	}
 	all, err := box.List(ctx, core.OutboxFilter{})

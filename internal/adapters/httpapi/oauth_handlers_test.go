@@ -40,7 +40,7 @@ func (p *fakeOAuthProvider) FetchUserInfo(_ context.Context, _ string) (*core.OA
 	return p.userInfo, nil
 }
 
-func setupOAuth(t *testing.T) (*OAuthHandler, *core.AuthService, *config.Config, *fakeOAuthProvider) {
+func setupOAuth(t *testing.T) *OAuthHandler {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "auth.db")
 	repo, err := sqlite.NewSQLitePostRepository(sqlite.Config{DSN: dbPath})
@@ -71,11 +71,11 @@ func setupOAuth(t *testing.T) (*OAuthHandler, *core.AuthService, *config.Config,
 		core.RoleAuthor,
 		core.SystemClock{},
 	)
-	return NewOAuthHandler(oauthSvc, authSvc, cfg), authSvc, cfg, provider
+	return NewOAuthHandler(oauthSvc, authSvc, cfg)
 }
 
 func TestOAuthHandler_Initiate_RedirectAndCookie(t *testing.T) {
-	h, _, _, _ := setupOAuth(t)
+	h := setupOAuth(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/oauth/github", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -104,7 +104,7 @@ func TestOAuthHandler_Initiate_RedirectAndCookie(t *testing.T) {
 }
 
 func TestOAuthHandler_Initiate_UnknownProvider_404(t *testing.T) {
-	h, _, _, _ := setupOAuth(t)
+	h := setupOAuth(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/oauth/google", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -114,7 +114,7 @@ func TestOAuthHandler_Initiate_UnknownProvider_404(t *testing.T) {
 }
 
 func TestOAuthHandler_Callback_StateMissing_400(t *testing.T) {
-	h, _, _, _ := setupOAuth(t)
+	h := setupOAuth(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/oauth/github/callback?code=abc&state=xyz", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -124,7 +124,7 @@ func TestOAuthHandler_Callback_StateMissing_400(t *testing.T) {
 }
 
 func TestOAuthHandler_Callback_StateMismatch_400(t *testing.T) {
-	h, _, _, _ := setupOAuth(t)
+	h := setupOAuth(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/oauth/github/callback?code=abc&state=wrong", nil)
 	req.AddCookie(&http.Cookie{Name: OAuthStateCookieName, Value: "real-state"})
 	rec := httptest.NewRecorder()
@@ -135,7 +135,7 @@ func TestOAuthHandler_Callback_StateMismatch_400(t *testing.T) {
 }
 
 func TestOAuthHandler_Callback_Success_SessionCookie_Redirect(t *testing.T) {
-	h, _, _, _ := setupOAuth(t)
+	h := setupOAuth(t)
 	// Initiate чтобы получить state.
 	initReq := httptest.NewRequest(http.MethodGet, "/api/auth/oauth/github", nil)
 	initRec := httptest.NewRecorder()

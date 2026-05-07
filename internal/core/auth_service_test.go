@@ -30,6 +30,7 @@ func newMockUsers() *mockUserRepo {
 	}
 }
 
+//nolint:funcorder // pure helper used by mock impls — keeping at top for readability.
 func (m *mockUserRepo) emailKey(t uuid.UUID, e string) string { return t.String() + "|" + e }
 
 func (m *mockUserRepo) GetByID(_ context.Context, id uuid.UUID) (*User, error) {
@@ -119,7 +120,7 @@ func (m *mockUserRepo) CountOwners(_ context.Context, t uuid.UUID) (int64, error
 	return c, nil
 }
 
-// mockTokenRepo
+// mockTokenRepo.
 type mockTokenRepo struct {
 	byID         map[uuid.UUID]*APIToken
 	byPrefix     map[string]*APIToken
@@ -177,7 +178,7 @@ func (m *mockTokenRepo) UpdateLastUsedAt(_ context.Context, id uuid.UUID, t time
 	return nil
 }
 
-// authClock
+// authClock.
 type authClock struct{ now time.Time }
 
 func (c *authClock) Now() time.Time { return c.now }
@@ -646,7 +647,7 @@ func TestAuthService_Login_RehashLegacy(t *testing.T) {
 		t.Fatal("user nil")
 	}
 	// Async rehash — ждём короткое время.
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		users.mu.RLock()
 		hash := users.byID[id].PasswordHash
 		users.mu.RUnlock()

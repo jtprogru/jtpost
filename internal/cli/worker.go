@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -53,7 +54,7 @@ var workerRunCmd = &cobra.Command{
 		ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		fmt.Printf("🚀 Worker запущен (poll=%s, max_attempts=%d). Ctrl+C для остановки.\n", workerInterval, workerMaxAttempts)
-		if err := w.Run(ctx); err != nil && err != context.Canceled {
+		if err := w.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			return err
 		}
 		return nil

@@ -165,7 +165,7 @@ func checkStorage(ctx context.Context, cfg *config.Config) checkResult {
 		if dsn == "" {
 			return checkResult{level: levelFail, name: "Storage", message: "sqlite: storage.sqlite.dsn пуст"}
 		}
-		repo, closer, err := openRepo(cfg)
+		repo, closer, err := openRepo(cfg) //nolint:contextcheck // applyMigrations использует Background ctx (миграции — startup-операция)
 		if err != nil {
 			return checkResult{level: levelFail, name: "Storage", message: fmt.Sprintf("sqlite open %s: %v", dsn, err)}
 		}
@@ -185,7 +185,7 @@ func checkStorage(ctx context.Context, cfg *config.Config) checkResult {
 		if dsn == "" {
 			return checkResult{level: levelFail, name: "Storage", message: "postgres: storage.postgres.dsn пуст"}
 		}
-		repo, closer, err := openRepo(cfg)
+		repo, closer, err := openRepo(cfg) //nolint:contextcheck // applyMigrations использует Background ctx (миграции — startup-операция)
 		if err != nil {
 			return checkResult{level: levelFail, name: "Storage", message: fmt.Sprintf("postgres open %s: %v", masked, err)}
 		}
