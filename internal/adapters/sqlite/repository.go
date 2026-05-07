@@ -43,21 +43,15 @@ type txKey struct{}
 
 // NewSQLitePostRepository открывает БД, применяет миграции и возвращает репозиторий.
 func NewSQLitePostRepository(cfg Config) (*PostRepository, error) {
-	db, err := sql.Open("sqlite", cfg.DSN)
+	dsn := withSQLitePragmas(cfg.DSN)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка подключения к SQLite: %w", err)
 	}
-
-	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ошибка включения foreign keys: %w", err)
-	}
-	// busy_timeout: SQLite — single-writer; без таймаута concurrent write
-	// (async session-touch + RefreshCSRF и т.п.) сразу даёт SQLITE_BUSY.
-	if _, err := db.ExecContext(context.Background(), "PRAGMA busy_timeout = 5000"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("ошибка установки busy_timeout: %w", err)
-	}
+	// SQLite — single-writer; ограничиваем пул одной connection чтобы избежать
+	// SQLITE_BUSY race между конкурентными writers (async session-touch +
+	// RefreshCSRF и т.п.). Pragma в DSN тоже применяется per-connection.
+	db.SetMaxOpenConns(1)
 
 	if err := applyMigrations(db); err != nil {
 		_ = db.Close()
@@ -68,6 +62,25 @@ func NewSQLitePostRepository(cfg Config) (*PostRepository, error) {
 		db:      db,
 		queries: sqlitedb.New(db),
 	}, nil
+}
+
+// withSQLitePragmas подмешивает критичные PRAGMA-параметры в DSN, чтобы они
+// применялись ко всем connection из пула (а не только к первой).
+//
+// _pragma=foreign_keys(1)         — включить FK enforcement;
+// _pragma=busy_timeout(5000)      — ждать до 5s при contention;
+// _pragma=journal_mode(WAL)       — WAL даёт concurrent reads + 1 writer;
+// _txlock=immediate               — write transactions сразу claim'ят lock.
+func withSQLitePragmas(dsn string) string {
+	if dsn == ":memory:" || dsn == "" {
+		// In-memory: префикс file: + URI-mode для ?-параметров.
+		return "file::memory:?cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_txlock=immediate"
+	}
+	sep := "?"
+	if strings.ContainsRune(dsn, '?') {
+		sep = "&"
+	}
+	return dsn + sep + "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate"
 }
 
 // applyMigrations выполняет goose.UpContext поверх встроенных миграций.
