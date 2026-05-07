@@ -69,6 +69,8 @@ var serveCmd = &cobra.Command{
 				BotToken:    cfg.Telegram.BotToken,
 				ChannelID:   cfg.Telegram.ChatID,
 				SiteBaseURL: cfg.Server.BaseURL,
+				UploadDir:   cfg.Server.Upload.Dir,
+				UploadRoute: "/ui/uploads/",
 			})
 			log.Info("✅ Telegram publisher инициализирован")
 		} else {

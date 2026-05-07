@@ -84,6 +84,8 @@ func publishToTelegram(ctx context.Context, post *core.Post, cfg *config.Config,
 		BotToken:    cfg.Telegram.BotToken,
 		ChannelID:   cfg.Telegram.ChatID,
 		SiteBaseURL: cfg.Server.BaseURL,
+		UploadDir:   cfg.Server.Upload.Dir,
+		UploadRoute: "/ui/uploads/",
 	}
 	publisher := telegram.NewPublisher(tgCfg)
 

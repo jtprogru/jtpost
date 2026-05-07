@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,11 +21,13 @@ import (
 
 // Publisher реализует интерфейс core.Publisher для Telegram.
 type Publisher struct {
-	botToken  string
-	channelID string
-	client    *http.Client
-	baseURL   string
-	siteURL   string // абсолютный URL сайта для resolve относительных путей картинок
+	botToken    string
+	channelID   string
+	client      *http.Client
+	baseURL     string
+	siteURL     string // абсолютный URL сайта для resolve относительных путей картинок
+	uploadDir   string // локальный путь к каталогу /ui/uploads/* для multipart-fallback
+	uploadRoute string // url-prefix внутри которого считаем путь относящимся к uploadDir
 }
 
 // Config конфигурация Telegram Publisher.
@@ -31,8 +36,14 @@ type Config struct {
 	ChannelID string `yaml:"channel_id"` // @channelname или -1001234567890
 	// SiteBaseURL — абсолютный URL сервиса (server.base_url). Используется чтобы
 	// markdown-image вида `/ui/uploads/...` превращать в публичный URL, который
-	// Telegram сам скачает через sendPhoto. Если пуст — медиа не отправляется.
+	// Telegram сам скачает через sendPhoto.
 	SiteBaseURL string `yaml:"site_base_url"`
+	// UploadDir + UploadRoute — fallback для приватных uploads (когда SiteBaseURL
+	// не задан или сайт недоступен Telegram'у). Файл читается локально и
+	// заливается через multipart/form-data. Если UploadDir пуст — fallback не
+	// активирован.
+	UploadDir   string `yaml:"upload_dir"`
+	UploadRoute string `yaml:"upload_route"` // обычно "/ui/uploads/"
 }
 
 // telegramCaptionLimit — лимит caption на одно фото.
@@ -40,12 +51,18 @@ const telegramCaptionLimit = 1024
 
 // NewPublisher создаёт новый Telegram Publisher.
 func NewPublisher(cfg Config) *Publisher {
+	route := cfg.UploadRoute
+	if route == "" && cfg.UploadDir != "" {
+		route = "/ui/uploads/"
+	}
 	return &Publisher{
-		botToken:  cfg.BotToken,
-		channelID: cfg.ChannelID,
-		client:    &http.Client{Timeout: 30 * time.Second},
-		baseURL:   "https://api.telegram.org/bot",
-		siteURL:   strings.TrimRight(cfg.SiteBaseURL, "/"),
+		botToken:    cfg.BotToken,
+		channelID:   cfg.ChannelID,
+		client:      &http.Client{Timeout: 60 * time.Second},
+		baseURL:     "https://api.telegram.org/bot",
+		siteURL:     strings.TrimRight(cfg.SiteBaseURL, "/"),
+		uploadDir:   cfg.UploadDir,
+		uploadRoute: route,
 	}
 }
 
@@ -64,28 +81,27 @@ func (p *Publisher) Publish(ctx context.Context, post *core.Post) (*core.Post, e
 
 	var msgURL string
 	var err error
-	if photoURL := p.firstResolvableImage(images); photoURL != "" {
-		caption := primaryHTML
-		var followup string
-		if len(caption) > telegramCaptionLimit {
-			// Caption — title-only; полный body уйдёт отдельным сообщением.
-			caption = fmt.Sprintf("<b>%s</b>", telegramconv.EscapeHTML(post.Title))
-			followup = htmlBody
-		}
-		msgURL, err = p.sendPhoto(ctx, photoURL, caption)
-		if err != nil {
-			return nil, fmt.Errorf("ошибка отправки фото: %w", err)
-		}
-		if followup != "" {
-			if _, ferr := p.sendMessage(ctx, followup); ferr != nil {
-				// Фото уже отправлено — лишь логируем followup-провал в ошибке.
-				return nil, fmt.Errorf("ошибка follow-up сообщения: %w", ferr)
-			}
-		}
-	} else {
+	caption := primaryHTML
+	var followup string
+	if len(caption) > telegramCaptionLimit {
+		caption = fmt.Sprintf("<b>%s</b>", telegramconv.EscapeHTML(post.Title))
+		followup = htmlBody
+	}
+	switch source := p.firstPhotoSource(images); source.kind {
+	case photoSourceFile:
+		msgURL, err = p.sendPhotoFile(ctx, source.path, caption)
+	case photoSourceURL:
+		msgURL, err = p.sendPhoto(ctx, source.path, caption)
+	default:
 		msgURL, err = p.sendMessage(ctx, primaryHTML)
-		if err != nil {
-			return nil, fmt.Errorf("ошибка отправки сообщения: %w", err)
+		followup = ""
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ошибка отправки сообщения: %w", err)
+	}
+	if followup != "" {
+		if _, ferr := p.sendMessage(ctx, followup); ferr != nil {
+			return nil, fmt.Errorf("ошибка follow-up сообщения: %w", ferr)
 		}
 	}
 
@@ -168,20 +184,120 @@ func (p *Publisher) GetMe(ctx context.Context) (*BotInfo, error) {
 	return &result.Result, nil
 }
 
-// firstResolvableImage возвращает первый image URL, который Telegram сможет
-// fetch'ить — абсолютный (https://...) или относительный, разрешённый через
-// p.siteURL. Если siteURL не задан и URL относительный — возвращается "".
-func (p *Publisher) firstResolvableImage(imgs []MDImage) string {
+// photoSourceKind — тип резолва для image-URL.
+type photoSourceKind int
+
+const (
+	photoSourceNone photoSourceKind = iota
+	photoSourceURL                  // path = публичный URL для sendPhoto
+	photoSourceFile                 // path = локальный файл для multipart upload
+)
+
+type photoSource struct {
+	kind photoSourceKind
+	path string
+}
+
+// firstPhotoSource возвращает первый image-reference, который удалось
+// разрешить либо в публичный URL (sendPhoto), либо в локальный файл (multipart).
+// Локальный файл предпочитается для приватных uploads (если UploadDir задан и
+// путь совпадает с UploadRoute) — это надёжнее, чем требовать public-доступ.
+func (p *Publisher) firstPhotoSource(imgs []MDImage) photoSource {
 	for _, im := range imgs {
 		if strings.HasPrefix(im.URL, "https://") || strings.HasPrefix(im.URL, "http://") {
-			return im.URL
+			return photoSource{photoSourceURL, im.URL}
 		}
-		if p.siteURL == "" || !strings.HasPrefix(im.URL, "/") {
+		if !strings.HasPrefix(im.URL, "/") {
 			continue
 		}
-		return p.siteURL + im.URL
+		// Local-file fallback — приоритет, если /ui/uploads/* + UploadDir задан.
+		if p.uploadDir != "" && p.uploadRoute != "" && strings.HasPrefix(im.URL, p.uploadRoute) {
+			rel := strings.TrimPrefix(im.URL, p.uploadRoute)
+			if rel != "" && !strings.Contains(rel, "..") {
+				abs, err := filepath.Abs(filepath.Join(p.uploadDir, filepath.FromSlash(rel)))
+				if err == nil {
+					rootAbs, rerr := filepath.Abs(p.uploadDir)
+					if rerr == nil && strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) {
+						if _, statErr := os.Stat(abs); statErr == nil {
+							return photoSource{photoSourceFile, abs}
+						}
+					}
+				}
+			}
+		}
+		// URL-based fallback через siteURL.
+		if p.siteURL != "" {
+			return photoSource{photoSourceURL, p.siteURL + im.URL}
+		}
+	}
+	return photoSource{photoSourceNone, ""}
+}
+
+// firstResolvableImage — backward-compat shortcut. Возвращает только URL-вариант
+// (используется в тестах). Для нового кода — firstPhotoSource.
+func (p *Publisher) firstResolvableImage(imgs []MDImage) string {
+	if s := p.firstPhotoSource(imgs); s.kind == photoSourceURL {
+		return s.path
 	}
 	return ""
+}
+
+// sendPhotoFile отправляет фото из локального файла через multipart/form-data.
+func (p *Publisher) sendPhotoFile(ctx context.Context, filePath, caption string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("открытие файла: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	_ = mw.WriteField("chat_id", p.channelID)
+	if caption != "" {
+		_ = mw.WriteField("caption", caption)
+		_ = mw.WriteField("parse_mode", "HTML")
+	}
+	fw, err := mw.CreateFormFile("photo", filepath.Base(filePath))
+	if err != nil {
+		return "", fmt.Errorf("multipart создание поля: %w", err)
+	}
+	if _, err := io.Copy(fw, f); err != nil {
+		return "", fmt.Errorf("multipart копирование: %w", err)
+	}
+	if err := mw.Close(); err != nil {
+		return "", fmt.Errorf("multipart close: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("%s%s/sendPhoto", p.baseURL, p.botToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, body)
+	if err != nil {
+		return "", fmt.Errorf("создание запроса: %w", err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("HTTP запрос: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("чтение ответа: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API вернул ошибку: %s", string(respBody))
+	}
+	var result struct {
+		OK     bool            `json:"ok"`
+		Result telegramMessage `json:"result"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("десериализация ответа: %w", err)
+	}
+	if !result.OK {
+		return "", errors.New("API вернул ok=false")
+	}
+	channelName := strings.TrimPrefix(p.channelID, "-100")
+	return fmt.Sprintf("https://t.me/%s/%d", channelName, result.Result.MessageID), nil
 }
 
 // sendPhoto публикует фото с опциональным caption. Возвращает URL поста.
