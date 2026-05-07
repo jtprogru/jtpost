@@ -15,7 +15,7 @@
   "branch": "feature/foundation-domain-config",
   "worktree": null,
   "last_completed_task": null,
-  "finish_action": null,
-  "finished_at": null,
-  "finish_base": null
+  "finish_action": "merge",
+  "finished_at": "2026-05-07T05:39:58Z",
+  "finish_base": "main"
 }

@@ -1,52 +1,79 @@
+// Package sqlite предоставляет SQLite-адаптер core.PostRepository.
+//
+// Реализация построена поверх sqlc-сгенерированного слоя в `sqlitedb` и
+// goose-миграций, встроенных через embed.FS.
 package sqlite
 
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/pressly/goose/v3"
+
+	"github.com/jtprogru/jtpost/internal/adapters/sqlite/sqlitedb"
 	"github.com/jtprogru/jtpost/internal/core"
+
 	_ "modernc.org/sqlite" // required for database/sql driver registration
 )
 
-// PostRepository реализация PostRepository на основе SQLite.
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+// PostRepository реализация core.PostRepository поверх SQLite + sqlc.
 type PostRepository struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *sqlitedb.Queries
 }
 
 // Config конфигурация SQLite репозитория.
 type Config struct {
-	// DSN строка подключения к базе данных (путь к файлу .db)
+	// DSN строка подключения SQLite (путь к .db-файлу или ":memory:").
 	DSN string
 }
 
-// NewSQLitePostRepository создаёт новый SQLite репозиторий.
-// Возвращает PostRepository для совместимости с интерфейсом core.PostRepository.
+// txKey ключ для хранения транзакции в контексте.
+type txKey struct{}
+
+// NewSQLitePostRepository открывает БД, применяет миграции и возвращает репозиторий.
 func NewSQLitePostRepository(cfg Config) (*PostRepository, error) {
 	db, err := sql.Open("sqlite", cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка подключения к SQLite: %w", err)
 	}
 
-	// Включаем поддержку внешних ключей
 	if _, err := db.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("ошибка включения foreign keys: %w", err)
 	}
 
-	repo := &PostRepository{db: db}
-
-	// Выполняем миграции
-	if err := repo.migrate(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("ошибка миграции: %w", err)
+	if err := applyMigrations(db); err != nil {
+		_ = db.Close()
+		return nil, errors.Join(core.ErrMigrationFailed, err)
 	}
 
-	return repo, nil
+	return &PostRepository{
+		db:      db,
+		queries: sqlitedb.New(db),
+	}, nil
+}
+
+// applyMigrations выполняет goose.UpContext поверх встроенных миграций.
+func applyMigrations(db *sql.DB) error {
+	goose.SetBaseFS(migrationsFS)
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		return fmt.Errorf("ошибка установки goose dialect: %w", err)
+	}
+	if err := goose.UpContext(context.Background(), db, "migrations"); err != nil {
+		return fmt.Errorf("ошибка применения миграций: %w", err)
+	}
+	return nil
 }
 
 // Close закрывает подключение к базе данных.
@@ -62,81 +89,129 @@ func (r *PostRepository) BeginTx(ctx context.Context) (context.Context, func() e
 	}
 
 	commit := func() error {
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-		return nil
+		return tx.Commit()
 	}
 
-	// Возвращаем контекст с транзакцией
 	ctxWithTx := context.WithValue(ctx, txKey{}, tx)
-
 	return ctxWithTx, commit, nil
 }
 
 // GetByID возвращает пост по идентификатору.
 func (r *PostRepository) GetByID(ctx context.Context, id core.PostID) (*core.Post, error) {
-	query := `
-	SELECT id, title, slug, status, tags, deadline, scheduled_at,
-	       published_at, content, telegram_url, created_at, updated_at
-	FROM posts WHERE id = ?
-	`
+	tenantID, ok := core.TenantFromContext(ctx)
+	if !ok {
+		return nil, core.ErrTenantMismatch
+	}
 
-	row := r.db.QueryRowContext(ctx, query, id)
-	return scanPost(row)
+	row, err := r.queries.GetPostByIDInTenant(ctx, sqlitedb.GetPostByIDInTenantParams{
+		ID:       id.String(),
+		TenantID: tenantID.String(),
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, core.ErrNotFound
+		}
+		return nil, err
+	}
+	return rowToPost(row)
 }
 
-// GetBySlug возвращает пост по slug.
+// GetBySlug возвращает пост по slug в рамках tenant'а из контекста.
 func (r *PostRepository) GetBySlug(ctx context.Context, slug string) (*core.Post, error) {
-	query := `
-	SELECT id, title, slug, status, tags, deadline, scheduled_at,
-	       published_at, content, telegram_url, created_at, updated_at
-	FROM posts WHERE slug = ?
-	`
+	tenantID, ok := core.TenantFromContext(ctx)
+	if !ok {
+		return nil, core.ErrTenantMismatch
+	}
 
-	row := r.db.QueryRowContext(ctx, query, slug)
-	return scanPost(row)
+	row, err := r.queries.GetPostBySlug(ctx, sqlitedb.GetPostBySlugParams{
+		TenantID: tenantID.String(),
+		Slug:     slug,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, core.ErrNotFound
+		}
+		return nil, err
+	}
+	return rowToPost(row)
 }
 
-// List возвращает список постов с применением фильтров.
+// List реализует расширенную фильтрацию/сортировку/пагинацию через
+// динамический SQL поверх *sql.DB (sqlc-набор не покрывает динамические
+// предикаты).
 func (r *PostRepository) List(ctx context.Context, filter core.PostFilter) ([]*core.Post, error) {
-	query := &strings.Builder{}
-	query.WriteString(`
-SELECT id, title, slug, status, tags, deadline, scheduled_at,
-       published_at, content, telegram_url, created_at, updated_at
-FROM posts WHERE 1=1
-`)
+	if filter.TenantID == uuid.Nil {
+		return nil, fmt.Errorf("%w: tenant_id required", core.ErrValidation)
+	}
+	if filter.SortBy != "" && !core.IsValidSortKey(filter.SortBy) {
+		return nil, fmt.Errorf("%w: invalid sort key %q", core.ErrValidation, filter.SortBy)
+	}
 
-	args := make([]any, 0)
+	var (
+		sb   strings.Builder
+		args []any
+	)
+	sb.WriteString(`
+SELECT id, tenant_id, author_id, title, slug, status,
+       tags, deadline, scheduled_at, published_at,
+       excerpt, cover_image, attachments, publish_history,
+       revision, revision_sha, content, telegram_url,
+       created_at, updated_at
+FROM posts
+WHERE tenant_id = ?`)
+	args = append(args, filter.TenantID.String())
 
-	// Фильтр по статусам
+	if filter.AuthorID != nil && *filter.AuthorID != uuid.Nil {
+		sb.WriteString(" AND author_id = ?")
+		args = append(args, filter.AuthorID.String())
+	}
+
 	if len(filter.Statuses) > 0 {
 		placeholders := make([]string, len(filter.Statuses))
-		for i, status := range filter.Statuses {
+		for i, st := range filter.Statuses {
 			placeholders[i] = "?"
-			args = append(args, string(status))
+			args = append(args, string(st))
 		}
-		fmt.Fprintf(query, " AND status IN (%s)", joinStrings(placeholders))
+		sb.WriteString(" AND status IN (")
+		sb.WriteString(strings.Join(placeholders, ","))
+		sb.WriteString(")")
 	}
 
-	// Фильтр по тегам
-	if len(filter.Tags) > 0 {
-		for _, tag := range filter.Tags {
-			query.WriteString(" AND tags LIKE ?")
-			args = append(args, "%"+tag+"%")
-		}
+	for _, tag := range filter.Tags {
+		sb.WriteString(" AND tags LIKE ?")
+		args = append(args, "%"+tag+"%")
 	}
 
-	// Поиск по заголовку и содержимому
 	if filter.Search != "" {
-		query.WriteString(" AND (title LIKE ? OR content LIKE ?)")
-		searchTerm := "%" + filter.Search + "%"
-		args = append(args, searchTerm, searchTerm)
+		sb.WriteString(" AND (title LIKE ? OR content LIKE ?)")
+		s := "%" + filter.Search + "%"
+		args = append(args, s, s)
 	}
 
-	query.WriteString(" ORDER BY created_at DESC")
+	sortBy := filter.SortBy
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	sortOrder := strings.ToUpper(filter.SortOrder)
+	if sortOrder != "ASC" && sortOrder != "DESC" {
+		if filter.SortBy == "" {
+			sortOrder = "DESC"
+		} else {
+			sortOrder = "ASC"
+		}
+	}
+	fmt.Fprintf(&sb, " ORDER BY %s %s", sortBy, sortOrder)
 
-	rows, err := r.db.QueryContext(ctx, query.String(), args...)
+	if filter.Limit > 0 {
+		sb.WriteString(" LIMIT ?")
+		args = append(args, filter.Limit)
+	}
+	if filter.Offset > 0 {
+		sb.WriteString(" OFFSET ?")
+		args = append(args, filter.Offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -144,340 +219,374 @@ FROM posts WHERE 1=1
 
 	posts := make([]*core.Post, 0)
 	for rows.Next() {
-		post, err := scanPostRow(rows)
+		var m sqlitedb.Post
+		if err := rows.Scan(
+			&m.ID, &m.TenantID, &m.AuthorID, &m.Title, &m.Slug, &m.Status,
+			&m.Tags, &m.Deadline, &m.ScheduledAt, &m.PublishedAt,
+			&m.Excerpt, &m.CoverImage, &m.Attachments, &m.PublishHistory,
+			&m.Revision, &m.RevisionSha, &m.Content, &m.TelegramUrl,
+			&m.CreatedAt, &m.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		p, err := rowToPost(m)
 		if err != nil {
 			return nil, err
 		}
-		posts = append(posts, post)
+		posts = append(posts, p)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
 	return posts, nil
 }
 
 // Create создаёт новый пост.
 func (r *PostRepository) Create(ctx context.Context, post *core.Post) error {
-	query := `
-	INSERT INTO posts (id, title, slug, status, tags, deadline,
-	                   scheduled_at, published_at, content, telegram_url, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-
-	now := time.Now().Format(time.RFC3339)
-
-	tagsJSON, err := json.Marshal(post.Tags)
+	params, err := postToCreateParams(post)
 	if err != nil {
 		return err
 	}
-
-	deadline := ""
-	if post.Deadline != nil {
-		deadline = post.Deadline.Format(time.RFC3339)
-	}
-
-	scheduledAt := ""
-	if post.ScheduledAt != nil {
-		scheduledAt = post.ScheduledAt.Format(time.RFC3339)
-	}
-
-	publishedAt := ""
-	if post.PublishedAt != nil {
-		publishedAt = post.PublishedAt.Format(time.RFC3339)
-	}
-
-	_, err = r.db.ExecContext(ctx, query,
-		post.ID, post.Title, post.Slug, string(post.Status),
-		string(tagsJSON),
-		deadline, scheduledAt, publishedAt,
-		post.Content, post.External.TelegramURL,
-		now, now,
-	)
-
-	return err
+	return r.queries.CreatePost(ctx, params)
 }
 
-// Update обновляет существующий пост.
+// Update обновляет существующий пост с проверкой optimistic-lock через revision.
 func (r *PostRepository) Update(ctx context.Context, post *core.Post) error {
-	query := `
-	UPDATE posts
-	SET title = ?, slug = ?, status = ?, tags = ?,
-	    deadline = ?, scheduled_at = ?, published_at = ?,
-	    content = ?, telegram_url = ?, updated_at = ?
-	WHERE id = ?
-	`
+	tenantID, ok := core.TenantFromContext(ctx)
+	if !ok {
+		return core.ErrTenantMismatch
+	}
 
-	now := time.Now().Format(time.RFC3339)
-
-	tagsJSON, err := json.Marshal(post.Tags)
+	tags, err := json.Marshal(safeTags(post.Tags))
+	if err != nil {
+		return err
+	}
+	attachments, err := json.Marshal(safeAttachments(post.Attachments))
+	if err != nil {
+		return err
+	}
+	publishHistory, err := json.Marshal(safePublishHistory(post.PublishHistory))
+	if err != nil {
+		return err
+	}
+	coverImage, err := marshalCoverImage(post.CoverImage)
 	if err != nil {
 		return err
 	}
 
-	deadline := ""
-	if post.Deadline != nil {
-		deadline = post.Deadline.Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	rows, err := r.queries.UpdatePost(ctx, sqlitedb.UpdatePostParams{
+		AuthorID:       post.AuthorID.String(),
+		Title:          post.Title,
+		Slug:           post.Slug,
+		Status:         string(post.Status),
+		Tags:           string(tags),
+		Deadline:       nullableTime(post.Deadline),
+		ScheduledAt:    nullableTime(post.ScheduledAt),
+		PublishedAt:    nullableTime(post.PublishedAt),
+		Excerpt:        nullableStringPtr(post.Excerpt),
+		CoverImage:     coverImage,
+		Attachments:    string(attachments),
+		PublishHistory: string(publishHistory),
+		Revision:       int64(post.Revision),
+		RevisionSha:    nullableStringPtr(post.RevisionSHA),
+		Content:        post.Content,
+		TelegramUrl:    nullableString(post.External.TelegramURL),
+		UpdatedAt:      now,
+		ID:             post.ID.String(),
+		TenantID:       tenantID.String(),
+		Revision_2:     int64(post.Revision - 1),
+	})
+	if err != nil {
+		return err
 	}
 
-	scheduledAt := ""
-	if post.ScheduledAt != nil {
-		scheduledAt = post.ScheduledAt.Format(time.RFC3339)
+	if rows == 0 {
+		exists, exErr := r.queries.PostExistsByID(ctx, post.ID.String())
+		if exErr != nil {
+			return exErr
+		}
+		if exists {
+			return core.ErrConflict
+		}
+		return core.ErrNotFound
 	}
 
-	publishedAt := ""
-	if post.PublishedAt != nil {
-		publishedAt = post.PublishedAt.Format(time.RFC3339)
-	}
-
-	_, err = r.db.ExecContext(ctx, query,
-		post.Title, post.Slug, string(post.Status),
-		string(tagsJSON),
-		deadline, scheduledAt, publishedAt,
-		post.Content, post.External.TelegramURL,
-		now, post.ID,
-	)
-
-	return err
+	return nil
 }
 
-// Delete удаляет пост.
+// Delete удаляет пост в рамках tenant'а из контекста. Идемпотентен.
 func (r *PostRepository) Delete(ctx context.Context, id core.PostID) error {
-	query := `DELETE FROM posts WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, id)
+	tenantID, ok := core.TenantFromContext(ctx)
+	if !ok {
+		return core.ErrTenantMismatch
+	}
+	_, err := r.queries.DeletePost(ctx, sqlitedb.DeletePostParams{
+		ID:       id.String(),
+		TenantID: tenantID.String(),
+	})
 	return err
 }
 
-// ImportPosts импортирует посты из другого репозитория.
+// ImportPosts импортирует посты в одной транзакции через UPSERT.
 func (r *PostRepository) ImportPosts(ctx context.Context, posts []*core.Post) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ошибка начала транзакции: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
+	defer func() { _ = tx.Rollback() }()
 
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT OR REPLACE INTO posts
-		(id, title, slug, status, tags, deadline,
-		 scheduled_at, published_at, content, telegram_url, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return fmt.Errorf("ошибка подготовки statement: %w", err)
-	}
-	defer stmt.Close()
-
-	now := time.Now().Format(time.RFC3339)
-
+	q := r.queries.WithTx(tx)
 	for _, post := range posts {
-		tagsJSON, err := json.Marshal(post.Tags)
+		params, err := postToUpsertParams(post)
 		if err != nil {
 			return err
 		}
-
-		deadline := ""
-		if post.Deadline != nil {
-			deadline = post.Deadline.Format(time.RFC3339)
-		}
-
-		scheduledAt := ""
-		if post.ScheduledAt != nil {
-			scheduledAt = post.ScheduledAt.Format(time.RFC3339)
-		}
-
-		publishedAt := ""
-		if post.PublishedAt != nil {
-			publishedAt = post.PublishedAt.Format(time.RFC3339)
-		}
-
-		_, err = stmt.ExecContext(ctx,
-			post.ID, post.Title, post.Slug, string(post.Status),
-			string(tagsJSON),
-			deadline, scheduledAt, publishedAt,
-			post.Content, post.External.TelegramURL,
-			now, now,
-		)
-		if err != nil {
+		if err := q.UpsertPost(ctx, params); err != nil {
 			return fmt.Errorf("ошибка импорта поста %s: %w", post.ID, err)
 		}
 	}
-
 	return tx.Commit()
 }
 
-// Count возвращает количество постов в хранилище.
+// Count возвращает общее количество постов.
 func (r *PostRepository) Count(ctx context.Context) (int64, error) {
-	var count int64
-	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM posts").Scan(&count)
-	return count, err
+	return r.queries.CountPosts(ctx)
 }
 
-// txKey ключ для хранения транзакции в контексте.
-type txKey struct{}
+// ---------- helpers: marshalling ----------
 
-// scanPost сканирует пост из sql.Row.
-func scanPost(row *sql.Row) (*core.Post, error) {
-	var (
-		id, title, slug, status, tagsJSON          string
-		deadline, scheduledAt, publishedAt         string
-		content, telegramURL, createdAt, updatedAt string
-	)
+func safeTags(t []string) []string {
+	if t == nil {
+		return []string{}
+	}
+	return t
+}
 
-	err := row.Scan(&id, &title, &slug, &status, &tagsJSON,
-		&deadline, &scheduledAt, &publishedAt, &content, &telegramURL,
-		&createdAt, &updatedAt)
+func safeAttachments(a []core.Attachment) []core.Attachment {
+	if a == nil {
+		return []core.Attachment{}
+	}
+	return a
+}
+
+func safePublishHistory(p []core.PublishAttempt) []core.PublishAttempt {
+	if p == nil {
+		return []core.PublishAttempt{}
+	}
+	return p
+}
+
+func marshalCoverImage(c *core.Attachment) (sql.NullString, error) {
+	if c == nil {
+		return sql.NullString{}, nil
+	}
+	b, err := json.Marshal(c)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, core.ErrNotFound
-		}
+		return sql.NullString{}, err
+	}
+	return sql.NullString{String: string(b), Valid: true}, nil
+}
+
+func nullableString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+func nullableStringPtr(s *string) sql.NullString {
+	if s == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *s, Valid: true}
+}
+
+func nullableTime(t *time.Time) sql.NullString {
+	if t == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: t.UTC().Format(time.RFC3339), Valid: true}
+}
+
+func parseTime(s string) (*time.Time, error) {
+	if s == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
 		return nil, err
 	}
+	return &t, nil
+}
 
-	var tags []string
-	if tagsJSON != "" {
-		_ = json.Unmarshal([]byte(tagsJSON), &tags)
+func parseTimeNS(ns sql.NullString) (*time.Time, error) {
+	if !ns.Valid || ns.String == "" {
+		return nil, nil
+	}
+	return parseTime(ns.String)
+}
+
+// rowToPost конвертирует sqlitedb.Post в *core.Post.
+func rowToPost(row sqlitedb.Post) (*core.Post, error) {
+	id, err := core.ParsePostID(row.ID)
+	if err != nil {
+		return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid post id: %w", err))
+	}
+	tenantID, err := uuid.Parse(row.TenantID)
+	if err != nil {
+		return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid tenant_id: %w", err))
+	}
+	authorID, err := uuid.Parse(row.AuthorID)
+	if err != nil {
+		return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid author_id: %w", err))
 	}
 
-	parsedID, err := core.ParsePostID(id)
+	createdAt, err := time.Parse(time.RFC3339, row.CreatedAt)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка парсинга ID: %w", err)
+		return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid created_at: %w", err))
+	}
+	updatedAt, err := time.Parse(time.RFC3339, row.UpdatedAt)
+	if err != nil {
+		return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid updated_at: %w", err))
 	}
 
 	post := &core.Post{
-		ID:      parsedID,
-		Title:   title,
-		Slug:    slug,
-		Status:  core.PostStatus(status),
-		Tags:    tags,
-		Content: content,
-		External: core.ExternalLinks{
-			TelegramURL: telegramURL,
-		},
+		ID:        id,
+		TenantID:  tenantID,
+		AuthorID:  authorID,
+		Title:     row.Title,
+		Slug:      row.Slug,
+		Status:    core.PostStatus(row.Status),
+		Revision:  int(row.Revision),
+		Content:   row.Content,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 
-	if deadline != "" {
-		if t, err := time.Parse(time.RFC3339, deadline); err == nil {
-			post.Deadline = &t
+	if row.Tags != "" {
+		var tags []string
+		if err := json.Unmarshal([]byte(row.Tags), &tags); err != nil {
+			return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid tags json: %w", err))
 		}
+		post.Tags = tags
 	}
 
-	if scheduledAt != "" {
-		if t, err := time.Parse(time.RFC3339, scheduledAt); err == nil {
-			post.ScheduledAt = &t
+	if row.Attachments != "" {
+		var atts []core.Attachment
+		if err := json.Unmarshal([]byte(row.Attachments), &atts); err != nil {
+			return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid attachments json: %w", err))
 		}
+		post.Attachments = atts
 	}
 
-	if publishedAt != "" {
-		if t, err := time.Parse(time.RFC3339, publishedAt); err == nil {
-			post.PublishedAt = &t
+	if row.PublishHistory != "" {
+		var ph []core.PublishAttempt
+		if err := json.Unmarshal([]byte(row.PublishHistory), &ph); err != nil {
+			return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid publish_history json: %w", err))
 		}
+		post.PublishHistory = ph
+	}
+
+	if row.CoverImage.Valid && row.CoverImage.String != "" {
+		var ci core.Attachment
+		if err := json.Unmarshal([]byte(row.CoverImage.String), &ci); err != nil {
+			return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid cover_image json: %w", err))
+		}
+		post.CoverImage = &ci
+	}
+
+	if t, err := parseTimeNS(row.Deadline); err != nil {
+		return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid deadline: %w", err))
+	} else if t != nil {
+		post.Deadline = t
+	}
+	if t, err := parseTimeNS(row.ScheduledAt); err != nil {
+		return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid scheduled_at: %w", err))
+	} else if t != nil {
+		post.ScheduledAt = t
+	}
+	if t, err := parseTimeNS(row.PublishedAt); err != nil {
+		return nil, errors.Join(core.ErrValidation, fmt.Errorf("invalid published_at: %w", err))
+	} else if t != nil {
+		post.PublishedAt = t
+	}
+
+	if row.Excerpt.Valid {
+		s := row.Excerpt.String
+		post.Excerpt = &s
+	}
+	if row.RevisionSha.Valid {
+		s := row.RevisionSha.String
+		post.RevisionSHA = &s
+	}
+	if row.TelegramUrl.Valid {
+		post.External.TelegramURL = row.TelegramUrl.String
 	}
 
 	return post, nil
 }
 
-// scanPostRow сканирует пост из sql.Rows.
-func scanPostRow(rows interface{ Scan(dest ...any) error }) (*core.Post, error) {
-	var (
-		id, title, slug, status, tagsJSON          string
-		deadline, scheduledAt, publishedAt         string
-		content, telegramURL, createdAt, updatedAt string
-	)
-
-	err := rows.Scan(&id, &title, &slug, &status, &tagsJSON,
-		&deadline, &scheduledAt, &publishedAt, &content, &telegramURL,
-		&createdAt, &updatedAt)
+func postToCreateParams(post *core.Post) (sqlitedb.CreatePostParams, error) {
+	tags, err := json.Marshal(safeTags(post.Tags))
 	if err != nil {
-		return nil, err
+		return sqlitedb.CreatePostParams{}, err
 	}
-
-	var tags []string
-	if tagsJSON != "" {
-		_ = json.Unmarshal([]byte(tagsJSON), &tags)
-	}
-
-	parsedID, err := core.ParsePostID(id)
+	attachments, err := json.Marshal(safeAttachments(post.Attachments))
 	if err != nil {
-		return nil, fmt.Errorf("ошибка парсинга ID: %w", err)
+		return sqlitedb.CreatePostParams{}, err
+	}
+	publishHistory, err := json.Marshal(safePublishHistory(post.PublishHistory))
+	if err != nil {
+		return sqlitedb.CreatePostParams{}, err
+	}
+	coverImage, err := marshalCoverImage(post.CoverImage)
+	if err != nil {
+		return sqlitedb.CreatePostParams{}, err
 	}
 
-	post := &core.Post{
-		ID:      parsedID,
-		Title:   title,
-		Slug:    slug,
-		Status:  core.PostStatus(status),
-		Tags:    tags,
-		Content: content,
-		External: core.ExternalLinks{
-			TelegramURL: telegramURL,
-		},
+	createdAt := post.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	updatedAt := post.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = createdAt
+	}
+	revision := post.Revision
+	if revision == 0 {
+		revision = 1
 	}
 
-	if deadline != "" {
-		if t, err := time.Parse(time.RFC3339, deadline); err == nil {
-			post.Deadline = &t
-		}
-	}
-
-	if scheduledAt != "" {
-		if t, err := time.Parse(time.RFC3339, scheduledAt); err == nil {
-			post.ScheduledAt = &t
-		}
-	}
-
-	if publishedAt != "" {
-		if t, err := time.Parse(time.RFC3339, publishedAt); err == nil {
-			post.PublishedAt = &t
-		}
-	}
-
-	return post, nil
+	return sqlitedb.CreatePostParams{
+		ID:             post.ID.String(),
+		TenantID:       post.TenantID.String(),
+		AuthorID:       post.AuthorID.String(),
+		Title:          post.Title,
+		Slug:           post.Slug,
+		Status:         string(post.Status),
+		Tags:           string(tags),
+		Deadline:       nullableTime(post.Deadline),
+		ScheduledAt:    nullableTime(post.ScheduledAt),
+		PublishedAt:    nullableTime(post.PublishedAt),
+		Excerpt:        nullableStringPtr(post.Excerpt),
+		CoverImage:     coverImage,
+		Attachments:    string(attachments),
+		PublishHistory: string(publishHistory),
+		Revision:       int64(revision),
+		RevisionSha:    nullableStringPtr(post.RevisionSHA),
+		Content:        post.Content,
+		TelegramUrl:    nullableString(post.External.TelegramURL),
+		CreatedAt:      createdAt.UTC().Format(time.RFC3339),
+		UpdatedAt:      updatedAt.UTC().Format(time.RFC3339),
+	}, nil
 }
 
-// joinStrings объединяет строки через запятую.
-func joinStrings(strs []string) string {
-	if len(strs) == 0 {
-		return ""
+func postToUpsertParams(post *core.Post) (sqlitedb.UpsertPostParams, error) {
+	cp, err := postToCreateParams(post)
+	if err != nil {
+		return sqlitedb.UpsertPostParams{}, err
 	}
-	var builder strings.Builder
-	builder.Grow(len(strs) * 2) // Оценка 2 символа на элемент (запятая + пробел)
-	builder.WriteString(strs[0])
-	for i := 1; i < len(strs); i++ {
-		builder.WriteString(", ")
-		builder.WriteString(strs[i])
-	}
-	return builder.String()
-}
-
-// migrate выполняет миграцию схемы базы данных.
-func (r *PostRepository) migrate() error {
-	schema := `
-	CREATE TABLE IF NOT EXISTS posts (
-		id TEXT PRIMARY KEY,
-		tenant_id TEXT NOT NULL DEFAULT '',
-		author_id TEXT NOT NULL DEFAULT '',
-		title TEXT NOT NULL,
-		slug TEXT NOT NULL UNIQUE,
-		status TEXT NOT NULL,
-		tags TEXT,
-		deadline TEXT,
-		scheduled_at TEXT,
-		published_at TEXT,
-		content TEXT NOT NULL,
-		telegram_url TEXT,
-		revision INTEGER NOT NULL DEFAULT 1,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
-	CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
-	CREATE INDEX IF NOT EXISTS idx_posts_tenant_id ON posts(tenant_id);
-	`
-
-	_, err := r.db.ExecContext(context.Background(), schema)
-	return err
+	return sqlitedb.UpsertPostParams(cp), nil
 }

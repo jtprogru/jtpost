@@ -9,6 +9,16 @@ var (
 	// ErrTenantMismatch возвращается при попытке изменить TenantID существующего
 	// поста или при операции записи с несовпадением tenant scope.
 	ErrTenantMismatch = errors.New("tenant mismatch")
+	// ErrConflict возвращается SQL-адаптерами при optimistic-lock коллизии:
+	// UPDATE WHERE revision=? затрагивает 0 строк, при этом пост существует.
+	ErrConflict = errors.New("conflict")
+)
+
+// Ошибки миграций.
+var (
+	// ErrMigrationFailed оборачивает ошибки применения goose-миграций
+	// при Open() SQL-адаптеров.
+	ErrMigrationFailed = errors.New("migration failed")
 )
 
 // Ошибки валидации.

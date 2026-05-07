@@ -469,10 +469,125 @@ func TestConfig_Validate_AcceptsAllStorageTypes(t *testing.T) {
 			cfg.Auth.TenantDefault = tenant
 			cfg.Auth.AuthorDefault = author
 			cfg.Storage.Type = st
+			if st == "postgres" {
+				cfg.Storage.Postgres.DSN = "postgres://localhost/jtpost"
+			}
 			if err := cfg.Validate(); err != nil {
 				t.Errorf("Validate(%s): %v", st, err)
 			}
 		})
+	}
+}
+
+func TestConfig_Validate_StorageDSN(t *testing.T) {
+	tenant, author := validUUIDs(t)
+	tt := []struct {
+		name    string
+		mutate  func(*Config)
+		wantErr bool
+	}{
+		{
+			name: "fs_no_dsn_required",
+			mutate: func(c *Config) {
+				c.Storage.Type = "fs"
+				c.Storage.SQLite.DSN = ""
+				c.Storage.Postgres.DSN = ""
+			},
+			wantErr: false,
+		},
+		{
+			name: "sqlite_empty_dsn_fails",
+			mutate: func(c *Config) {
+				c.Storage.Type = "sqlite"
+				c.Storage.SQLite.DSN = ""
+				c.SQLite.DSN = ""
+			},
+			wantErr: true,
+		},
+		{
+			name: "sqlite_storage_dsn_ok",
+			mutate: func(c *Config) {
+				c.Storage.Type = "sqlite"
+				c.Storage.SQLite.DSN = "/tmp/x.db"
+				c.SQLite.DSN = ""
+			},
+			wantErr: false,
+		},
+		{
+			name: "sqlite_legacy_dsn_fallback_ok",
+			mutate: func(c *Config) {
+				c.Storage.Type = "sqlite"
+				c.Storage.SQLite.DSN = ""
+				c.SQLite.DSN = "/tmp/legacy.db"
+			},
+			wantErr: false,
+		},
+		{
+			name: "postgres_empty_dsn_fails",
+			mutate: func(c *Config) {
+				c.Storage.Type = "postgres"
+				c.Storage.Postgres.DSN = ""
+			},
+			wantErr: true,
+		},
+		{
+			name: "postgres_dsn_ok",
+			mutate: func(c *Config) {
+				c.Storage.Type = "postgres"
+				c.Storage.Postgres.DSN = "postgres://u:p@h/db"
+			},
+			wantErr: false,
+		},
+		{
+			name: "postgres_negative_max_open_fails",
+			mutate: func(c *Config) {
+				c.Storage.Type = "postgres"
+				c.Storage.Postgres.DSN = "postgres://h/db"
+				c.Storage.Postgres.MaxOpenConns = -1
+			},
+			wantErr: true,
+		},
+		{
+			name: "postgres_negative_max_idle_fails",
+			mutate: func(c *Config) {
+				c.Storage.Type = "postgres"
+				c.Storage.Postgres.DSN = "postgres://h/db"
+				c.Storage.Postgres.MaxIdleConns = -2
+			},
+			wantErr: true,
+		},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := NewDefaultConfig()
+			cfg.Auth.TenantDefault = tenant
+			cfg.Auth.AuthorDefault = author
+			tc.mutate(cfg)
+			err := cfg.Validate()
+			if tc.wantErr && !errors.Is(err, core.ErrConfigInvalid) {
+				t.Fatalf("want ErrConfigInvalid, got %v", err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("want nil, got %v", err)
+			}
+		})
+	}
+}
+
+func TestConfig_SQLiteDSN_Priority(t *testing.T) {
+	cfg := &Config{}
+	cfg.Storage.SQLite.DSN = "/from/storage.db"
+	cfg.SQLite.DSN = "/from/legacy.db"
+	if got := cfg.SQLiteDSN(); got != "/from/storage.db" {
+		t.Errorf("storage.sqlite.dsn must win, got %q", got)
+	}
+	cfg.Storage.SQLite.DSN = ""
+	if got := cfg.SQLiteDSN(); got != "/from/legacy.db" {
+		t.Errorf("legacy fallback failed, got %q", got)
+	}
+	cfg.SQLite.DSN = ""
+	if got := cfg.SQLiteDSN(); got != "" {
+		t.Errorf("both empty must yield empty, got %q", got)
 	}
 }
 

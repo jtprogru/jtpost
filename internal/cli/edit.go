@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jtprogru/jtpost/internal/adapters/fsrepo"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
@@ -33,10 +32,11 @@ var editCmd = &cobra.Command{
 		}
 
 		// Создаём репозиторий
-		repo, err := fsrepo.NewFileSystemRepository(cfg.PostsDir)
+		repo, closer, err := openRepo(cfg)
 		if err != nil {
 			return fmt.Errorf("ошибка создания репозитория: %w", err)
 		}
+		defer closer.Close()
 
 		// Получаем пост для проверки существования
 		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)

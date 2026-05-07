@@ -18,6 +18,8 @@ storage:
   sqlite:
     dsn: .jtpost.db
   postgres:
+    # Пример DSN: postgres://user:password@localhost:5432/jtpost?sslmode=disable
+    # Когда задан и storage.type=postgres, миграции применяются автоматически при старте.
     dsn: ""
     max_open_conns: 10
     max_idle_conns: 5

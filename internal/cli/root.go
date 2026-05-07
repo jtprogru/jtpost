@@ -2,8 +2,12 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 
+	"github.com/jtprogru/jtpost/internal/adapters/config"
+	"github.com/jtprogru/jtpost/internal/adapters/storage"
+	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
 
@@ -58,6 +62,7 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(migrateCmd)
+	// migrateDBCmd регистрируется как subcommand migrateCmd в migrate_db.go init().
 	rootCmd.AddCommand(migrateIDsCmd)
 	rootCmd.AddCommand(doctorCmd)
 }
@@ -65,4 +70,16 @@ func init() {
 func initConfig() {
 	// Инициализация конфигурации будет здесь
 	// Пока оставляем пустым для базовой работы
+}
+
+// openRepo конструирует core.PostRepository по cfg.Storage.Type. Caller
+// обязан вызвать closer.Close() после использования.
+func openRepo(cfg *config.Config) (core.PostRepository, io.Closer, error) {
+	return storage.Open(cfg)
+}
+
+// openRepoAs аналогичен openRepo, но позволяет переопределить storage.type
+// (используется командой `migrate --from --to`).
+func openRepoAs(cfg *config.Config, storageType string) (core.PostRepository, io.Closer, error) {
+	return storage.OpenAs(cfg, storageType)
 }

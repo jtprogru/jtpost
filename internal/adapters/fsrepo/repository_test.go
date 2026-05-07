@@ -9,8 +9,27 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/jtprogru/jtpost/internal/adapters/repotest"
 	"github.com/jtprogru/jtpost/internal/core"
 )
+
+// TestFSRepo_RunContract запускает общий repotest.RunContract против
+// файлового адаптера. FS не поддерживает optimistic-lock и транзакции —
+// соответствующие subtest скипаются автоматически.
+func TestFSRepo_RunContract(t *testing.T) {
+	repotest.RunContract(t, func(t *testing.T) (core.PostRepository, repotest.Capabilities, func()) {
+		t.Helper()
+		repo, err := NewFileSystemRepository(t.TempDir())
+		if err != nil {
+			t.Fatalf("NewFileSystemRepository: %v", err)
+		}
+		return repo, repotest.Capabilities{
+			OptimisticLock: false,
+			Transactions:   false,
+		}, func() {}
+	})
+}
 
 func tenantCtx(tenantID uuid.UUID) context.Context {
 	return core.WithTenant(context.Background(), tenantID)

@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 
-	"github.com/jtprogru/jtpost/internal/adapters/fsrepo"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
@@ -29,10 +28,11 @@ var deleteCmd = &cobra.Command{
 		}
 
 		// Создаём репозиторий
-		repo, err := fsrepo.NewFileSystemRepository(cfg.PostsDir)
+		repo, closer, err := openRepo(cfg)
 		if err != nil {
 			return fmt.Errorf("ошибка создания репозитория: %w", err)
 		}
+		defer closer.Close()
 
 		// Создаём сервис
 		service := core.NewPostService(repo, core.SystemClock{})

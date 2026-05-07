@@ -74,6 +74,27 @@ tasks:
     cmds:
       - "go test -race -v ./..."
 
+  test:integration:
+    desc: Integration-тесты Postgres (требуется Docker)
+    cmds:
+      - "go test -tags=integration -v ./internal/adapters/postgres/..."
+
+  # === Кодогенерация и миграции ===
+  generate:
+    desc: Кодогенерация (sqlc для SQLite и Postgres адаптеров)
+    cmds:
+      - "sqlc generate"
+
+  db:up:
+    desc: "Применить миграции выбранного backend (jtpost migrate db up --to <sqlite|postgres>)"
+    cmds:
+      - "go run cmd/{{ .BINARY_NAME }}/main.go migrate db up {{ .CLI_ARGS }}"
+
+  db:status:
+    desc: "Статус миграций выбранного backend (jtpost migrate db status --to <sqlite|postgres>)"
+    cmds:
+      - "go run cmd/{{ .BINARY_NAME }}/main.go migrate db status {{ .CLI_ARGS }}"
+
   test:coverage:
     desc: Тесты с покрытием
     cmds:

@@ -37,6 +37,16 @@ jobs:
       - name: Test
         run: go test -v -race -coverprofile=coverage.out ./...
 
+      - name: Install sqlc
+        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25'
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+
+      - name: Verify sqlc-generated code is up to date
+        if: matrix.os == 'ubuntu-latest' && matrix.go == '1.25'
+        run: |
+          sqlc generate
+          git diff --exit-code -- internal/adapters/sqlite/sqlitedb internal/adapters/postgres/pgdb
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4
         with:
@@ -63,6 +73,28 @@ jobs:
         with:
           version: latest
           args: --timeout=5m
+
+  integration-tests:
+    name: Integration Tests (Postgres)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run integration tests
+        run: task test:integration
 
   build:
     name: Build

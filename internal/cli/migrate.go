@@ -3,79 +3,75 @@ package cli
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/jtprogru/jtpost/internal/adapters/config"
-	"github.com/jtprogru/jtpost/internal/adapters/fsrepo"
-	"github.com/jtprogru/jtpost/internal/adapters/sqlite"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
 
 var (
-	migrateDBPath    string
+	migrateFrom      string
+	migrateTo        string
 	migrateDryRun    bool
 	migrateOverwrite bool
-	migrateSourceDir string
 )
 
 var migrateCmd = &cobra.Command{
 	Use:   "migrate",
-	Short: "Миграция постов из файлового хранилища в SQLite",
-	Long:  `Мигрирует все посты из файлового хранилища в базу данных SQLite.`,
+	Short: "Миграция данных постов между storage backend",
+	Long: `Переносит все посты из source backend в target backend через core.MigratableRepository.
+
+Поддерживаются: fs, sqlite, postgres. Параметры выбираются через --from и --to (обязательны).
+Старый формат --db <path> больше не поддерживается; используйте storage.sqlite.dsn в конфиге.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Старый --db флаг — отдельная ошибка с подсказкой.
+		if cmd.Flags().Changed("db") {
+			fmt.Fprintln(os.Stderr, "flag --db is no longer supported, use --from/--to and storage.sqlite.dsn in config")
+			os.Exit(2)
+		}
+
+		if migrateFrom == "" || migrateTo == "" {
+			return fmt.Errorf("--from and --to are required")
+		}
+		if migrateFrom == migrateTo {
+			return fmt.Errorf("source and target must differ")
+		}
+		if !isValidStorageType(migrateFrom) {
+			return fmt.Errorf("invalid --from %q (must be fs|sqlite|postgres)", migrateFrom)
+		}
+		if !isValidStorageType(migrateTo) {
+			return fmt.Errorf("invalid --to %q (must be fs|sqlite|postgres)", migrateTo)
+		}
+
 		ctx := cmd.Context()
 
-		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
 		cfg, err := loadConfigForMigrate(configPath)
 		if err != nil {
 			return err
 		}
 
-		// Определяем путь к БД
-		dbPath := migrateDBPath
-		if dbPath == "" {
-			dbPath = cfg.SQLite.DSN
-		}
-		if dbPath == "" {
-			dbPath = ".jtpost.db"
-		}
+		fmt.Printf("📦 Миграция постов\n═══════════════════════════════════════\n")
+		fmt.Printf("Источник: %s\nНазначение: %s\nТестовый запуск: %v\n\n", migrateFrom, migrateTo, migrateDryRun)
 
-		// Определяем источник
-		sourceDir := migrateSourceDir
-		if sourceDir == "" {
-			sourceDir = cfg.PostsDir
-		}
-
-		fmt.Printf("📦 Миграция постов\n")
-		fmt.Printf("═══════════════════════════════════════\n")
-		fmt.Printf("Источник: %s\n", sourceDir)
-		fmt.Printf("Назначение: %s\n", dbPath)
-		fmt.Printf("Тестовый запуск: %v\n", migrateDryRun)
-		fmt.Println()
-
-		// Создаём файловый репозиторий (источник)
-		fsRepo, err := fsrepo.NewFileSystemRepository(sourceDir)
+		srcRepo, srcCloser, err := openRepoAs(cfg, migrateFrom)
 		if err != nil {
-			return fmt.Errorf("ошибка создания файлового репозитория: %w", err)
+			return fmt.Errorf("ошибка открытия source (%s): %w", migrateFrom, err)
 		}
+		defer srcCloser.Close()
 
-		// Получаем все посты из источника
 		ctx = scopeContext(ctx, cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
-		allPosts, err := fsRepo.List(ctx, core.PostFilter{TenantID: cfg.Auth.TenantDefault})
+		allPosts, err := srcRepo.List(ctx, core.PostFilter{TenantID: cfg.Auth.TenantDefault})
 		if err != nil {
 			return fmt.Errorf("ошибка получения списка постов: %w", err)
 		}
 
 		fmt.Printf("📊 Найдено постов: %d\n", len(allPosts))
-
 		if len(allPosts) == 0 {
 			fmt.Println("✅ Нечего мигрировать — посты не найдены")
 			return nil
 		}
 
-		// Тестовый запуск — показываем что будет мигрировано
 		if migrateDryRun {
 			fmt.Println("\n📋 Посты для миграции:")
 			for _, post := range allPosts {
@@ -85,55 +81,52 @@ var migrateCmd = &cobra.Command{
 			return nil
 		}
 
-		// Создаём SQLite репозиторий (назначение)
-		absDBPath, err := filepath.Abs(dbPath)
+		dstRepo, dstCloser, err := openRepoAs(cfg, migrateTo)
 		if err != nil {
-			return fmt.Errorf("ошибка получения абсолютного пути к БД: %w", err)
+			return fmt.Errorf("ошибка открытия target (%s): %w", migrateTo, err)
+		}
+		defer dstCloser.Close()
+
+		mig, ok := dstRepo.(core.MigratableRepository)
+		if !ok {
+			return fmt.Errorf("target backend %q не поддерживает ImportPosts", migrateTo)
 		}
 
-		sqliteRepo, err := sqlite.NewSQLitePostRepository(sqlite.Config{DSN: absDBPath})
+		existingCount, err := mig.Count(ctx)
 		if err != nil {
-			return fmt.Errorf("ошибка создания SQLite репозитория: %w", err)
+			return fmt.Errorf("ошибка подсчёта постов в target: %w", err)
 		}
-		defer sqliteRepo.Close()
-
-		// Проверяем, есть ли уже посты в БД
-		existingCount, err := sqliteRepo.Count(ctx)
-		if err != nil {
-			return fmt.Errorf("ошибка подсчёта постов в БД: %w", err)
-		}
-
 		if existingCount > 0 && !migrateOverwrite {
-			return fmt.Errorf("база данных уже содержит %d постов. Используйте --overwrite для перезаписи", existingCount)
+			return fmt.Errorf("target содержит %d постов. Используйте --overwrite для перезаписи", existingCount)
 		}
 
-		// Мигрируем посты
 		fmt.Println("\n🔄 Начало миграции...")
-
-		if err := sqliteRepo.ImportPosts(ctx, allPosts); err != nil {
+		if err := mig.ImportPosts(ctx, allPosts); err != nil {
 			return fmt.Errorf("ошибка импорта постов: %w", err)
 		}
 
-		// Проверяем результат
-		newCount, err := sqliteRepo.Count(ctx)
+		newCount, err := mig.Count(ctx)
 		if err != nil {
 			return fmt.Errorf("ошибка подсчёта постов после миграции: %w", err)
 		}
 
-		fmt.Println()
-		fmt.Printf("✅ Миграция завершена успешно!\n")
-		fmt.Printf("📊 Мигрировано постов: %d\n", newCount)
-		fmt.Printf("💾 База данных: %s\n", absDBPath)
-
+		fmt.Printf("\n✅ Миграция завершена успешно!\n📊 Мигрировано постов: %d\n", newCount)
 		return nil
 	},
 }
 
 func init() {
-	migrateCmd.Flags().StringVarP(&migrateDBPath, "db", "d", "", "путь к файлу SQLite БД (.jtpost.db)")
+	migrateCmd.Flags().StringVar(&migrateFrom, "from", "", "source backend (fs|sqlite|postgres)")
+	migrateCmd.Flags().StringVar(&migrateTo, "to", "", "target backend (fs|sqlite|postgres)")
 	migrateCmd.Flags().BoolVarP(&migrateDryRun, "dry-run", "n", false, "режим предпросмотра без миграции")
-	migrateCmd.Flags().BoolVarP(&migrateOverwrite, "overwrite", "f", false, "перезаписать существующую БД")
-	migrateCmd.Flags().StringVarP(&migrateSourceDir, "from", "s", "", "директория с постами для импорта")
+	migrateCmd.Flags().BoolVarP(&migrateOverwrite, "overwrite", "f", false, "перезаписать target если уже содержит посты")
+	// Скрытый legacy-флаг — для отдельной обработки в RunE с явным exit(2).
+	migrateCmd.Flags().String("db", "", "")
+	_ = migrateCmd.Flags().MarkHidden("db")
+}
+
+func isValidStorageType(t string) bool {
+	return t == "fs" || t == "sqlite" || t == "postgres"
 }
 
 // loadConfigForMigrate загружает конфигурацию для команды migrate.
@@ -141,7 +134,6 @@ func loadConfigForMigrate(path string) (*config.Config, error) {
 	cfg, err := config.Load(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Создаём дефолтную конфигурацию
 			cfg = config.NewDefaultConfig()
 			if path != "" {
 				if err := cfg.Save(path); err != nil {

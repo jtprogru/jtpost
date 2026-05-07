@@ -7,6 +7,36 @@
 
 ## [Неопубликовано]
 
+### F2: Storage parity — SQLite + Postgres адаптеры с полным F1-контрактом
+
+**Breaking changes:**
+- `jtpost migrate --db <path>` больше не поддерживается. Используйте `jtpost migrate --from <fs|sqlite|postgres> --to <fs|sqlite|postgres>` и `storage.sqlite.dsn`/`storage.postgres.dsn` в конфиге. При использовании старого флага CLI завершается с кодом 2.
+- `internal/adapters/sqlite` полностью переписан под F1-схему. Существующие dev-БД с F0-схемой будут пересозданы при первом `Open()` (миграция через goose делает `DROP+CREATE`). Бэкапьте посты через старую `jtpost migrate` ДО апгрейда (если данные были).
+- Колонки `posts` теперь содержат `tenant_id`, `author_id`, `excerpt`, `cover_image`, `attachments`, `publish_history`, `revision`, `revision_sha`. UNIQUE(tenant_id, slug), индексы по tenant_id и составным ключам.
+
+**Добавлено:**
+- **Новые ошибки:** `core.ErrConflict` (optimistic-lock коллизия в SQL), `core.ErrMigrationFailed` (обёртка вокруг ошибок goose).
+- **Postgres-адаптер** (`internal/adapters/postgres`) на `pgx/v5` + `pgxpool` с типами `uuid`/`jsonb`/`timestamptz`. Eager `Pool.Ping()` при `Open()` для fail-fast. Goose-миграции применяются автоматически.
+- **SQLite-адаптер v2** (`internal/adapters/sqlite`) с типизированной кодогенерацией через **sqlc** и автоматическим применением goose-миграций при `Open()`.
+- **Storage factory** (`internal/adapters/storage`) — единая точка входа: `storage.Open(cfg)` диспатчит по `cfg.Storage.Type ∈ {fs|sqlite|postgres}`. Все CLI-команды и HTTP-сервер переключены на factory.
+- **Optimistic locking**: SQL-адаптеры выполняют `UPDATE ... WHERE id=? AND revision=?`. Если 0 строк затронуто и пост существует — возвращают `core.ErrConflict`. FS-адаптер не поддерживает optimistic lock (документировано).
+- **Контракт-сьют** `internal/adapters/repotest.RunContract(t, factory)` — 18 поведенческих subtests гарантируют семантическую парность fs/sqlite/postgres. Capability-флаги `OptimisticLock`/`Transactions` для backend-specific сценариев.
+- **`jtpost migrate db <up|status> --to <sqlite|postgres>`** — управление схемой БД через goose поверх embed-FS миграций.
+- **`jtpost migrate --from --to`** — миграция данных между любыми двумя backend (через `core.MigratableRepository.ImportPosts`). Поддерживает `--dry-run` и `--overwrite`.
+- **`jtpost doctor` v2** — универсальная Storage-проверка: для fs — PostsDir, для sqlite/postgres — `Open` + `Count`. Пароль в DSN маскируется (`postgres://user:***@host/db`).
+- **`Config.Validate()`** усилен: при `Storage.Type=sqlite|postgres` требует непустой DSN, отрицательные `MaxOpenConns`/`MaxIdleConns` отклоняются.
+- **`Config.SQLiteDSN()`** helper — приоритет `storage.sqlite.dsn` > legacy `sqlite.dsn`.
+- **Taskfile**: `task generate` (sqlc), `task test:integration`, `task db:up --to <backend>`, `task db:status --to <backend>`.
+- **CI**: новый job `integration-tests` (Linux only) запускает Postgres-тесты через testcontainers; `test` job проверяет актуальность sqlc-генерации (`sqlc generate && git diff --exit-code`).
+- **Зависимости**: `github.com/jackc/pgx/v5`, `github.com/pressly/goose/v3`, `github.com/testcontainers/testcontainers-go` (+ `modules/postgres`).
+- **Hidden** legacy-флаг `--db` остаётся зарегистрированным только для целевой обработки exit(2) с подсказкой пользователю.
+
+**Путь миграции с F1 → F2:**
+1. До апгрейда: если используется SQLite, экспортировать данные через старый `jtpost migrate` (FS → SQLite).
+2. Обновить `.jtpost.yaml`: добавить/проверить `storage.sqlite.dsn` или `storage.postgres.dsn` (legacy `sqlite.dsn` тоже работает как fallback).
+3. После апгрейда: первый `jtpost <cmd>` с `storage.type=sqlite` пересоздаст таблицу под F1-схему.
+4. Импорт данных: `jtpost migrate --from fs --to sqlite` или `--to postgres` (при необходимости с `--overwrite`).
+
 ### F1: Foundation — расширение домена, multi-tenant readiness и новая схема конфигурации
 
 **Breaking changes:**

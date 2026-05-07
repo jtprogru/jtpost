@@ -1,0 +1,26 @@
+version: "2"
+sql:
+  - engine: sqlite
+    schema: internal/adapters/sqlite/migrations
+    queries: internal/adapters/sqlite/queries
+    gen:
+      go:
+        package: sqlitedb
+        out: internal/adapters/sqlite/sqlitedb
+        sql_package: database/sql
+        emit_interface: false
+        emit_json_tags: false
+        emit_prepared_queries: false
+        emit_pointers_for_null_types: false
+  - engine: postgresql
+    schema: internal/adapters/postgres/migrations
+    queries: internal/adapters/postgres/queries
+    gen:
+      go:
+        package: pgdb
+        out: internal/adapters/postgres/pgdb
+        sql_package: pgx/v5
+        emit_interface: false
+        emit_json_tags: false
+        emit_prepared_queries: false
+        emit_pointers_for_null_types: false

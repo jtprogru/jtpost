@@ -58,7 +58,7 @@ func runDoctor(ctx context.Context, out io.Writer, configPath string) error {
 
 	if cfg != nil {
 		results = append(results, checkPostsDir(cfg.PostsDir))
-		results = append(results, checkSQLite(cfg.SQLite.DSN))
+		results = append(results, checkStorage(ctx, cfg))
 		results = append(results, checkTelegram(ctx, cfg.Telegram))
 		results = append(results, checkEditor())
 	}
@@ -147,19 +147,57 @@ func checkPostsDir(dir string) checkResult {
 	return checkResult{level: levelOK, name: "Директория постов", message: fmt.Sprintf("%s (rw)", abs)}
 }
 
-func checkSQLite(dsn string) checkResult {
-	if dsn == "" {
-		return checkResult{level: levelWarn, name: "SQLite", message: "не настроен (sqlite.dsn пуст)"}
+func checkStorage(ctx context.Context, cfg *config.Config) checkResult {
+	st := cfg.Storage.Type
+	if st == "" {
+		st = "fs"
 	}
-	abs, _ := filepath.Abs(dsn)
-	dir := filepath.Dir(dsn)
-	if _, err := os.Stat(dir); err != nil {
-		return checkResult{level: levelWarn, name: "SQLite", message: fmt.Sprintf("каталог %s недоступен: %v", dir, err)}
+	switch st {
+	case "fs":
+		// PostsDir уже проверен в checkPostsDir.
+		return checkResult{level: levelOK, name: "Storage", message: "fs (используется PostsDir)"}
+	case "sqlite":
+		dsn := cfg.SQLiteDSN()
+		if dsn == "" {
+			return checkResult{level: levelFail, name: "Storage", message: "sqlite: storage.sqlite.dsn пуст"}
+		}
+		repo, closer, err := openRepo(cfg)
+		if err != nil {
+			return checkResult{level: levelFail, name: "Storage", message: fmt.Sprintf("sqlite open %s: %v", dsn, err)}
+		}
+		defer closer.Close()
+		mig, ok := repo.(core.MigratableRepository)
+		if !ok {
+			return checkResult{level: levelOK, name: "Storage", message: fmt.Sprintf("sqlite (%s) — open ok", dsn)}
+		}
+		count, err := mig.Count(ctx)
+		if err != nil {
+			return checkResult{level: levelFail, name: "Storage", message: fmt.Sprintf("sqlite count: %v", err)}
+		}
+		return checkResult{level: levelOK, name: "Storage", message: fmt.Sprintf("sqlite (%s) — %d posts", dsn, count)}
+	case "postgres":
+		dsn := cfg.Storage.Postgres.DSN
+		masked := maskDSN(dsn)
+		if dsn == "" {
+			return checkResult{level: levelFail, name: "Storage", message: "postgres: storage.postgres.dsn пуст"}
+		}
+		repo, closer, err := openRepo(cfg)
+		if err != nil {
+			return checkResult{level: levelFail, name: "Storage", message: fmt.Sprintf("postgres open %s: %v", masked, err)}
+		}
+		defer closer.Close()
+		mig, ok := repo.(core.MigratableRepository)
+		if !ok {
+			return checkResult{level: levelOK, name: "Storage", message: fmt.Sprintf("postgres (%s) — open ok", masked)}
+		}
+		count, err := mig.Count(ctx)
+		if err != nil {
+			return checkResult{level: levelFail, name: "Storage", message: fmt.Sprintf("postgres count: %v", err)}
+		}
+		return checkResult{level: levelOK, name: "Storage", message: fmt.Sprintf("postgres (%s) — %d posts", masked, count)}
+	default:
+		return checkResult{level: levelFail, name: "Storage", message: fmt.Sprintf("unknown storage.type: %s", st)}
 	}
-	if _, err := os.Stat(dsn); err == nil {
-		return checkResult{level: levelOK, name: "SQLite", message: fmt.Sprintf("%s (файл найден)", abs)}
-	}
-	return checkResult{level: levelOK, name: "SQLite", message: fmt.Sprintf("%s (будет создан при первой операции)", abs)}
 }
 
 func checkTelegram(ctx context.Context, tg config.TelegramConfig) checkResult {

@@ -58,24 +58,8 @@ func TestCheckPostsDir(t *testing.T) {
 	})
 }
 
-func TestCheckSQLite_Empty(t *testing.T) {
-	res := checkSQLite("")
-	if res.level != levelWarn {
-		t.Fatalf("пустой DSN должен давать warn, получили %d", res.level)
-	}
-}
-
-func TestCheckSQLite_Existing(t *testing.T) {
-	dir := t.TempDir()
-	dsn := filepath.Join(dir, "test.db")
-	if err := os.WriteFile(dsn, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	res := checkSQLite(dsn)
-	if res.level != levelOK {
-		t.Fatalf("ожидали ok, получили %d (%s)", res.level, res.message)
-	}
-}
+// Тесты checkSQLite удалены: SQLite-проверка слилась с универсальной checkStorage,
+// которая требует cfg + ctx. Покрытие через TestDoctor_Storage* (см. отдельные тесты при необходимости).
 
 func TestCheckEditor(t *testing.T) {
 	t.Setenv("VISUAL", "")

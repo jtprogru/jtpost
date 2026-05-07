@@ -310,6 +310,15 @@ func (c *Config) Validate() error {
 		c.Storage.Type != "postgres" {
 		return fmt.Errorf("%w: invalid storage.type %q", core.ErrConfigInvalid, c.Storage.Type)
 	}
+	if c.Storage.Type == "sqlite" && c.SQLiteDSN() == "" {
+		return fmt.Errorf("%w: storage.sqlite.dsn required", core.ErrConfigInvalid)
+	}
+	if c.Storage.Type == "postgres" && c.Storage.Postgres.DSN == "" {
+		return fmt.Errorf("%w: storage.postgres.dsn required", core.ErrConfigInvalid)
+	}
+	if c.Storage.Postgres.MaxOpenConns < 0 || c.Storage.Postgres.MaxIdleConns < 0 {
+		return fmt.Errorf("%w: storage.postgres pool sizes must be non-negative", core.ErrConfigInvalid)
+	}
 	if c.Auth.TenantDefault == uuid.Nil {
 		return fmt.Errorf("%w: auth.tenant_default required", core.ErrConfigInvalid)
 	}
@@ -317,4 +326,13 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("%w: auth.author_default required", core.ErrConfigInvalid)
 	}
 	return nil
+}
+
+// SQLiteDSN возвращает DSN для SQLite с приоритетом storage.sqlite.dsn,
+// fallback на legacy верхнеуровневый sqlite.dsn.
+func (c *Config) SQLiteDSN() string {
+	if c.Storage.SQLite.DSN != "" {
+		return c.Storage.SQLite.DSN
+	}
+	return c.SQLite.DSN
 }
