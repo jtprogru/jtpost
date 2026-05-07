@@ -57,7 +57,7 @@ func samplePost(title string, status core.PostStatus, tags ...string) *core.Post
 func newTestHandler(posts ...*core.Post) *Handler {
 	repo := &fakeRepo{posts: posts}
 	svc := core.NewPostService(repo, core.SystemClock{})
-	return NewHandler(svc, nil)
+	return NewHandler(Config{Service: svc})
 }
 
 func TestUI_Dashboard_RendersHTML(t *testing.T) {

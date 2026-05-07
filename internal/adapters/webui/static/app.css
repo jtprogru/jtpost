@@ -184,3 +184,83 @@ h1, h2, h3 { color: var(--fg); }
 
 .htmx-indicator { opacity: 0; transition: opacity 200ms; }
 .htmx-request .htmx-indicator { opacity: 1; }
+
+/* Login page */
+.login-body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+}
+
+.login-main {
+    width: 100%;
+    max-width: 360px;
+    padding: 2rem;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+}
+
+.login-form h1 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.4rem;
+}
+
+.login-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+}
+
+.login-form input {
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.95rem;
+}
+
+.login-form input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.form-error {
+    color: var(--danger);
+    font-size: 0.85rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--danger);
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.user-info {
+    color: var(--fg-muted);
+    font-size: 0.85rem;
+}
+
+.user-info form {
+    display: inline;
+}
+
+.user-info button {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+    font: inherit;
+}

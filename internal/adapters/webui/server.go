@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/webui/components"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/jtprogru/jtpost/internal/logger"
@@ -23,17 +24,38 @@ var staticFS embed.FS
 
 // Handler — UI handler. Обслуживает /ui/* path-prefix.
 type Handler struct {
-	service *core.PostService
-	log     *logger.Logger
-	mux     *http.ServeMux
+	service  *core.PostService
+	authSvc  *core.AuthService  // nil — auth disabled, login UI отключён
+	auditSvc *core.AuditService // nil-safe
+	cfg      *config.Config
+	log      *logger.Logger
+	mux      *http.ServeMux
+}
+
+// Config — параметры NewHandler.
+type Config struct {
+	Service  *core.PostService
+	Auth     *core.AuthService
+	Audit    *core.AuditService
+	Cfg      *config.Config
+	Logger   *logger.Logger
 }
 
 // NewHandler создаёт UI handler с готовой подсетью routes.
-func NewHandler(service *core.PostService, log *logger.Logger) *Handler {
+// Auth/cfg=nil → login routes возвращают 503; пригодно для тестов.
+func NewHandler(c Config) *Handler {
+	log := c.Logger
 	if log == nil {
 		log = logger.NewDefault()
 	}
-	h := &Handler{service: service, log: log, mux: http.NewServeMux()}
+	h := &Handler{
+		service:  c.Service,
+		authSvc:  c.Auth,
+		auditSvc: c.Audit,
+		cfg:      c.Cfg,
+		log:      log,
+		mux:      http.NewServeMux(),
+	}
 	h.registerRoutes()
 	return h
 }
@@ -46,9 +68,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("/ui/", h.handleIndex)
 	h.mux.HandleFunc("/ui/posts", h.handlePostsPartial)
+	h.mux.HandleFunc("/ui/login", h.handleLogin)
+	h.mux.HandleFunc("/ui/logout", h.handleLogout)
 
 	staticSub, _ := fs.Sub(staticFS, "static")
 	h.mux.Handle("/ui/static/", http.StripPrefix("/ui/static/", http.FileServerFS(staticSub)))
+}
+
+// handleLogin маршрутизирует GET → форма, POST → submit.
+func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.loginPageHandler(w, r)
+	case http.MethodPost:
+		h.loginSubmitHandler(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleLogout — POST only.
+func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	h.logoutHandler(w, r)
 }
 
 func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -56,9 +101,17 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// Если auth включён и user не аутентифицирован — отправляем на login.
+	if h.cfg != nil && h.cfg.Auth.Type == "token" {
+		if u, _ := core.UserFromContext(r.Context()); u == nil {
+			http.Redirect(w, r, "/ui/login", http.StatusSeeOther)
+			return
+		}
+	}
 	props := components.DashboardProps{
-		Search: r.URL.Query().Get("search"),
-		Status: r.URL.Query().Get("status"),
+		Search:    r.URL.Query().Get("search"),
+		Status:    r.URL.Query().Get("status"),
+		UserEmail: userEmailFromContext(r.Context()),
 	}
 	posts, err := h.listPosts(r.Context(), props.Search, props.Status)
 	if err != nil {
@@ -71,6 +124,13 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if err := components.Dashboard(props).Render(r.Context(), w); err != nil {
 		h.log.Error("ui render dashboard: %v", err)
 	}
+}
+
+func userEmailFromContext(ctx context.Context) string {
+	if u, ok := core.UserFromContext(ctx); ok && u != nil {
+		return u.Email
+	}
+	return ""
 }
 
 // handlePostsPartial — htmx-partial: только tbody, для in-place обновлений.

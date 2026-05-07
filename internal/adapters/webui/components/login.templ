@@ -1,0 +1,51 @@
+package components
+
+// LoginProps — данные для login page.
+type LoginProps struct {
+	Email string // pre-fill после ошибки
+	Error string // message для inline-ошибки; "" — нет ошибки
+}
+
+templ Login(p LoginProps) {
+	<!DOCTYPE html>
+	<html lang="ru">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Log in — jtpost</title>
+			<link rel="stylesheet" href="/ui/static/app.css"/>
+			<script>
+				(function() {
+					const saved = localStorage.getItem('jtpost-theme');
+					if (saved) document.documentElement.setAttribute('data-theme', saved);
+				})();
+			</script>
+		</head>
+		<body class="login-body">
+			<main class="login-main">
+				<form method="post" action="/ui/login" class="login-form">
+					<h1>Log in</h1>
+					<label>
+						Email
+						<input
+							type="email"
+							name="email"
+							required
+							autocomplete="email"
+							autofocus
+							value={ p.Email }
+						/>
+					</label>
+					<label>
+						Password
+						<input type="password" name="password" required autocomplete="current-password"/>
+					</label>
+					if p.Error != "" {
+						<div class="form-error">{ p.Error }</div>
+					}
+					<button type="submit" class="btn">Log in</button>
+				</form>
+			</main>
+		</body>
+	</html>
+}

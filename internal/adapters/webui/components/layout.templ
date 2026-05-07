@@ -1,17 +1,23 @@
 package components
 
+// LayoutProps — параметры базового layout.
+type LayoutProps struct {
+	Title     string
+	ActiveNav string
+	UserEmail string // empty — анонимный или auth disabled
+}
+
 // Layout — базовый HTML wrapper. children — содержимое <main>.
-templ Layout(title string, activeNav string) {
+templ Layout(p LayoutProps) {
 	<!DOCTYPE html>
 	<html lang="ru">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ title } — jtpost</title>
+			<title>{ p.Title } — jtpost</title>
 			<link rel="stylesheet" href="/ui/static/app.css"/>
 			<script src="/ui/static/htmx.min.js" defer></script>
 			<script>
-				// Theme: persisted в localStorage; toggle применяет data-theme.
 				(function() {
 					const saved = localStorage.getItem('jtpost-theme');
 					if (saved) document.documentElement.setAttribute('data-theme', saved);
@@ -19,7 +25,7 @@ templ Layout(title string, activeNav string) {
 			</script>
 		</head>
 		<body>
-			@nav(activeNav)
+			@nav(p)
 			<main>
 				{ children... }
 			</main>
@@ -27,14 +33,22 @@ templ Layout(title string, activeNav string) {
 	</html>
 }
 
-templ nav(active string) {
+templ nav(p LayoutProps) {
 	<nav class="nav">
 		<a href="/ui/" class="nav__brand">📝 jtpost</a>
 		<div class="nav__links">
-			<a href="/ui/" class={ navLinkClass(active, "dashboard") }>Posts</a>
-			<a href="/ui/plan" class={ navLinkClass(active, "plan") }>Plan</a>
-			<a href="/ui/audit" class={ navLinkClass(active, "audit") }>Audit</a>
+			<a href="/ui/" class={ navLinkClass(p.ActiveNav, "dashboard") }>Posts</a>
+			<a href="/ui/plan" class={ navLinkClass(p.ActiveNav, "plan") }>Plan</a>
+			<a href="/ui/audit" class={ navLinkClass(p.ActiveNav, "audit") }>Audit</a>
 			<button class="theme-toggle" onclick="toggleTheme()">🌓</button>
+			if p.UserEmail != "" {
+				<span class="user-info">
+					{ p.UserEmail }
+					<form method="post" action="/ui/logout">
+						<button type="submit">Log out</button>
+					</form>
+				</span>
+			}
 		</div>
 	</nav>
 	<script>

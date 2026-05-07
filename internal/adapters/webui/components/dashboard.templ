@@ -8,13 +8,14 @@ import (
 
 // DashboardProps — данные для рендера dashboard.
 type DashboardProps struct {
-	Posts  []*core.Post
-	Search string
-	Status string
+	Posts     []*core.Post
+	Search    string
+	Status    string
+	UserEmail string
 }
 
 templ Dashboard(p DashboardProps) {
-	@Layout("Posts", "dashboard") {
+	@Layout(LayoutProps{Title: "Posts", ActiveNav: "dashboard", UserEmail: p.UserEmail}) {
 		<h1>Posts</h1>
 		@dashboardToolbar(p)
 		<div id="posts-table">

@@ -8,8 +8,15 @@ package components
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
+// LayoutProps — параметры базового layout.
+type LayoutProps struct {
+	Title     string
+	ActiveNav string
+	UserEmail string // empty — анонимный или auth disabled
+}
+
 // Layout — базовый HTML wrapper. children — содержимое <main>.
-func Layout(title string, activeNav string) templ.Component {
+func Layout(p LayoutProps) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -35,19 +42,19 @@ func Layout(title string, activeNav string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(title)
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(p.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/layout.templ`, Line: 10, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/layout.templ`, Line: 17, Col: 19}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " — jtpost</title><link rel=\"stylesheet\" href=\"/ui/static/app.css\"><script src=\"/ui/static/htmx.min.js\" defer></script><script>\n\t\t\t\t// Theme: persisted в localStorage; toggle применяет data-theme.\n\t\t\t\t(function() {\n\t\t\t\t\tconst saved = localStorage.getItem('jtpost-theme');\n\t\t\t\t\tif (saved) document.documentElement.setAttribute('data-theme', saved);\n\t\t\t\t})();\n\t\t\t</script></head><body>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " — jtpost</title><link rel=\"stylesheet\" href=\"/ui/static/app.css\"><script src=\"/ui/static/htmx.min.js\" defer></script><script>\n\t\t\t\t(function() {\n\t\t\t\t\tconst saved = localStorage.getItem('jtpost-theme');\n\t\t\t\t\tif (saved) document.documentElement.setAttribute('data-theme', saved);\n\t\t\t\t})();\n\t\t\t</script></head><body>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = nav(activeNav).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = nav(p).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -67,7 +74,7 @@ func Layout(title string, activeNav string) templ.Component {
 	})
 }
 
-func nav(active string) templ.Component {
+func nav(p LayoutProps) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -92,7 +99,7 @@ func nav(active string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var4 = []any{navLinkClass(active, "dashboard")}
+		var templ_7745c5c3_Var4 = []any{navLinkClass(p.ActiveNav, "dashboard")}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var4...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -114,7 +121,7 @@ func nav(active string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var6 = []any{navLinkClass(active, "plan")}
+		var templ_7745c5c3_Var6 = []any{navLinkClass(p.ActiveNav, "plan")}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var6...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -136,7 +143,7 @@ func nav(active string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var8 = []any{navLinkClass(active, "audit")}
+		var templ_7745c5c3_Var8 = []any{navLinkClass(p.ActiveNav, "audit")}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var8...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -154,7 +161,30 @@ func nav(active string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\">Audit</a> <button class=\"theme-toggle\" onclick=\"toggleTheme()\">🌓</button></div></nav><script>\n\t\tfunction toggleTheme() {\n\t\t\tconst cur = document.documentElement.getAttribute('data-theme') || 'light';\n\t\t\tconst next = cur === 'dark' ? 'light' : 'dark';\n\t\t\tdocument.documentElement.setAttribute('data-theme', next);\n\t\t\tlocalStorage.setItem('jtpost-theme', next);\n\t\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\">Audit</a> <button class=\"theme-toggle\" onclick=\"toggleTheme()\">🌓</button> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if p.UserEmail != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span class=\"user-info\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var10 string
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(p.UserEmail)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/layout.templ`, Line: 46, Col: 18}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<form method=\"post\" action=\"/ui/logout\"><button type=\"submit\">Log out</button></form></span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></nav><script>\n\t\tfunction toggleTheme() {\n\t\t\tconst cur = document.documentElement.getAttribute('data-theme') || 'light';\n\t\t\tconst next = cur === 'dark' ? 'light' : 'dark';\n\t\t\tdocument.documentElement.setAttribute('data-theme', next);\n\t\t\tlocalStorage.setItem('jtpost-theme', next);\n\t\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

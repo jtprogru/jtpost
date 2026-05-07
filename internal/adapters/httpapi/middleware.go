@@ -173,6 +173,8 @@ var csrfSkipPaths = map[string]struct{}{
 	"/api/auth/login":  {},
 	"/api/auth/csrf":   {},
 	"/api/auth/logout": {},
+	"/ui/login":        {},
+	"/ui/logout":       {},
 }
 
 // csrfSkipPrefixes — пути префикс-skip для CSRF (OAuth callback).
@@ -229,11 +231,14 @@ var requireAuthSkipPaths = map[string]struct{}{
 	"/api/auth/logout": {},
 }
 
-// requireAuthSkipPrefixes — path-prefix, проходящие БЕЗ auth (OAuth-flow).
+// requireAuthSkipPrefixes — path-prefix, проходящие БЕЗ auth (OAuth-flow,
+// UI login/static — UI handlers сами решают что показывать анонимам).
 //
 //nolint:gochecknoglobals
 var requireAuthSkipPrefixes = []string{
 	"/api/auth/oauth/",
+	"/ui/login",
+	"/ui/static/",
 }
 
 // RequireAuthMiddleware — финальный gate. Если в ctx нет User — 401.
