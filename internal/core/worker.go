@@ -17,6 +17,7 @@ type WorkerConfig struct {
 	StuckThreshold  time.Duration // entries in_flight дольше этого периодически возвращаются в pending
 	SweepInterval   time.Duration // как часто запускать sweep
 	Logger          *logger.Logger
+	Bus             EventBus // опциональный — для real-time UI обновлений
 }
 
 // Worker обрабатывает outbox-очередь.
@@ -27,6 +28,7 @@ type Worker struct {
 	clock     Clock
 	cfg       WorkerConfig
 	log       *logger.Logger
+	bus       EventBus
 }
 
 // NewWorker создаёт worker. cfg-поля с zero-value заменяются на defaults.
@@ -49,7 +51,7 @@ func NewWorker(outbox OutboxRepository, posts PostRepository, pub Publisher, clo
 	if cfg.Logger == nil {
 		cfg.Logger = logger.New(logger.Config{Level: logger.LevelInfo, Prefix: "worker"})
 	}
-	return &Worker{outbox: outbox, posts: posts, publisher: pub, clock: clock, cfg: cfg, log: cfg.Logger}
+	return &Worker{outbox: outbox, posts: posts, publisher: pub, clock: clock, cfg: cfg, log: cfg.Logger, bus: cfg.Bus}
 }
 
 // Run запускает poll-loop до отмены ctx. Возвращает ctx.Err().
@@ -132,12 +134,31 @@ func (w *Worker) processOne(ctx context.Context) (bool, error) {
 			w.log.Error("mark done failed: %v", dErr)
 		}
 		w.log.Info("published %s", entry.PostID)
+		w.publishEvent("post.published", map[string]any{
+			"id":       entry.PostID.String(),
+			"tenantID": entry.TenantID.String(),
+		})
 		return true, nil
 	}
 
 	w.log.Warn("publish failed for %s: %v", entry.PostID, pubErr)
-	w.markRetryOrFail(ctx, entry, pubErr)
+	failed := w.markRetryOrFail(ctx, entry, pubErr)
+	if failed && entry.Attempts+1 >= entry.MaxAttempts {
+		w.publishEvent("post.failed", map[string]any{
+			"id":       entry.PostID.String(),
+			"tenantID": entry.TenantID.String(),
+			"error":    pubErr.Error(),
+		})
+	}
 	return true, nil
+}
+
+// publishEvent — nil-safe shortcut для публикации на bus.
+func (w *Worker) publishEvent(topic string, data map[string]any) {
+	if w.bus == nil {
+		return
+	}
+	w.bus.Publish(Event{Topic: topic, Data: data})
 }
 
 // markRetryOrFail обновляет outbox-entry: retry с backoff или permanent fail.

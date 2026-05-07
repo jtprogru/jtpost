@@ -352,3 +352,77 @@ func TestEnqueueForPublish(t *testing.T) {
 		t.Errorf("wrong defaults: %+v", entry)
 	}
 }
+
+func TestWorker_PublishesPostPublishedEvent(t *testing.T) {
+	now := time.Now().UTC()
+	clock := &fixedClock{t: now}
+	outbox := newMockOutbox()
+	posts := newMockPosts()
+	postID := PostID(uuid.New())
+	posts.posts[postID] = &Post{ID: postID, Status: StatusReady, Title: "T"}
+	_ = outbox.Enqueue(context.Background(), &OutboxEntry{
+		PostID: postID, Status: OutboxStatusPending, MaxAttempts: 3, NextAttemptAt: now,
+	})
+	bus := NewMemoryBus(4)
+	ch, cancel := bus.Subscribe()
+	defer cancel()
+	w := NewWorker(outbox, posts, &mockPublisher{}, clock, WorkerConfig{MaxAttempts: 3, Bus: bus})
+	if processed, _ := w.processOne(context.Background()); !processed {
+		t.Fatal("expected processed")
+	}
+	select {
+	case e := <-ch:
+		if e.Topic != "post.published" {
+			t.Errorf("topic=%q, want post.published", e.Topic)
+		}
+		if got, _ := e.Data["id"].(string); got != postID.String() {
+			t.Errorf("data.id=%q, want %s", got, postID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("post.published event not delivered")
+	}
+}
+
+func TestWorker_PublishesPostFailedEvent(t *testing.T) {
+	now := time.Now().UTC()
+	clock := &fixedClock{t: now}
+	outbox := newMockOutbox()
+	posts := newMockPosts()
+	postID := PostID(uuid.New())
+	posts.posts[postID] = &Post{ID: postID, Status: StatusReady}
+	_ = outbox.Enqueue(context.Background(), &OutboxEntry{
+		PostID: postID, Status: OutboxStatusPending, MaxAttempts: 1, NextAttemptAt: now,
+	})
+	bus := NewMemoryBus(4)
+	ch, cancel := bus.Subscribe()
+	defer cancel()
+	w := NewWorker(outbox, posts, &mockPublisher{fail: 10, err: errors.New("perm")}, clock,
+		WorkerConfig{MaxAttempts: 1, Bus: bus})
+	if processed, _ := w.processOne(context.Background()); !processed {
+		t.Fatal("expected processed")
+	}
+	select {
+	case e := <-ch:
+		if e.Topic != "post.failed" {
+			t.Errorf("topic=%q, want post.failed", e.Topic)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("post.failed event not delivered")
+	}
+}
+
+func TestWorker_NilBus_DoesNotPanic(t *testing.T) {
+	now := time.Now().UTC()
+	clock := &fixedClock{t: now}
+	outbox := newMockOutbox()
+	posts := newMockPosts()
+	postID := PostID(uuid.New())
+	posts.posts[postID] = &Post{ID: postID, Status: StatusReady}
+	_ = outbox.Enqueue(context.Background(), &OutboxEntry{
+		PostID: postID, Status: OutboxStatusPending, MaxAttempts: 3, NextAttemptAt: now,
+	})
+	w := NewWorker(outbox, posts, &mockPublisher{}, clock, WorkerConfig{MaxAttempts: 3})
+	if processed, _ := w.processOne(context.Background()); !processed {
+		t.Fatal("expected processed")
+	}
+}
