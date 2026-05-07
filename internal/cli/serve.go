@@ -73,23 +73,34 @@ var serveCmd = &cobra.Command{
 			log.Warn("⚠️  Telegram publisher не настроен (отсутствует конфигурация)")
 		}
 
-		// Создаём HTTP сервер с логгером
-		serverCfg := httpapi.ServerConfig{
-			Service:   service,
-			Publisher: publisher,
-			Logger:    log,
-		}
-		server := httpapi.NewServerWithConfig(serverCfg)
-
-		// Оборачиваем сервер в middleware
-		var handler http.Handler = server
+		// Создаём AuthService (nil если auth.type != token)
+		var authSvc *core.AuthService
 		if cfg.Auth.Type == "token" {
 			if bundle.Users == nil || bundle.Tokens == nil {
 				return fmt.Errorf("auth.type=token requires sqlite or postgres storage")
 			}
-			authSvc := core.NewAuthService(bundle.Users, bundle.Tokens, cfg.Auth.BCryptCost, core.SystemClock{})
+			authSvc = core.NewAuthService(bundle.Users, bundle.Tokens, bundle.Sessions, cfg.Auth.BCryptCost, core.SystemClock{})
+		}
+
+		// Создаём HTTP сервер с логгером
+		serverCfg := httpapi.ServerConfig{
+			Service:     service,
+			Publisher:   publisher,
+			AuthService: authSvc,
+			Logger:      log,
+			Config:      cfg,
+		}
+		server := httpapi.NewServerWithConfig(serverCfg)
+
+		// Оборачиваем сервер в middleware-chain.
+		var handler http.Handler = server
+		if cfg.Auth.Type == "token" {
+			// Bearer (soft) → Session (soft) → CSRF → RequireAuth (final 401).
+			handler = httpapi.RequireAuthMiddleware()(handler)
+			handler = httpapi.CSRFMiddleware()(handler)
+			handler = httpapi.SessionMiddleware(authSvc)(handler)
 			handler = httpapi.BearerTokenMiddleware(authSvc)(handler)
-			log.Info("🔐 Bearer-token auth включён")
+			log.Info("🔐 Auth chain: Bearer + Session + CSRF включён")
 		} else {
 			handler = httpapi.TenantFromConfigMiddleware(cfg)(handler)
 		}

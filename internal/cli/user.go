@@ -62,7 +62,7 @@ var userCreateCmd = &cobra.Command{
 		if role == "" {
 			role = core.RoleAuthor
 		}
-		svc := core.NewAuthService(bundle.Users, bundle.Tokens, cfg.Auth.BCryptCost, core.SystemClock{})
+		svc := core.NewAuthService(bundle.Users, bundle.Tokens, bundle.Sessions, cfg.Auth.BCryptCost, core.SystemClock{})
 		user, err := svc.CreateUser(ctx, core.CreateUserInput{
 			TenantID: cfg.Auth.TenantDefault,
 			Email:    userCreateEmail,

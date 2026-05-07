@@ -21,27 +21,44 @@ const (
 	tokenSecretCost   = 6 // hardcoded — secret имеет ~140-bit entropy, не нужен высокий cost
 	tokenRetryLimit   = 3 // на UNIQUE(prefix) collision
 
+	sessionFormatPrefix = "jts_"
+	sessionSecretLen    = 32
+	sessionSecretCost   = 4 // entropy 256-bit; bcrypt лишь защищает от leak БД
+	csrfTokenLen        = 32
+
 	tokenAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
+//nolint:gochecknoglobals
+var sessionFormatRegex = regexp.MustCompile(`^jts_[A-Za-z0-9]{8}_[A-Za-z0-9]{32}$`)
+
 var tokenFormatRegex = regexp.MustCompile(`^jtpat_[A-Za-z0-9]{8}_[A-Za-z0-9]{24}$`) //nolint:gochecknoglobals
 
-// AuthService инкапсулирует auth-логику: пользователи, PAT, RBAC.
+// AuthService инкапсулирует auth-логику: пользователи, PAT, sessions, RBAC.
 type AuthService struct {
 	users      UserRepository
 	tokens     TokenRepository
+	sessions   SessionRepository
 	bcryptCost int
 	clock      Clock
 }
 
-// NewAuthService создаёт AuthService.
-func NewAuthService(users UserRepository, tokens TokenRepository, bcryptCost int, clock Clock) *AuthService {
+// NewAuthService создаёт AuthService. sessions может быть nil если фича
+// web-sessions не используется (auth.type=token без cookie-flow).
+func NewAuthService(
+	users UserRepository,
+	tokens TokenRepository,
+	sessions SessionRepository,
+	bcryptCost int,
+	clock Clock,
+) *AuthService {
 	if clock == nil {
 		clock = SystemClock{}
 	}
 	return &AuthService{
 		users:      users,
 		tokens:     tokens,
+		sessions:   sessions,
 		bcryptCost: bcryptCost,
 		clock:      clock,
 	}
@@ -218,4 +235,128 @@ func randomString(n int) (string, error) {
 		out[i] = tokenAlphabet[buf[i]%alphaLen]
 	}
 	return string(out), nil
+}
+
+// Login верифицирует email+password и создаёт session. Возвращает LoginResult
+// с .RawToken (cookie value, plaintext, показывается клиенту один раз).
+// Token format: "jts_<8 prefix>_<32 secret>" — pattern зеркалит PAT для
+// O(1) lookup по prefix.
+func (s *AuthService) Login(ctx context.Context, in LoginInput, ttl time.Duration) (*LoginResult, error) {
+	if s.sessions == nil {
+		return nil, fmt.Errorf("sessions repository not configured")
+	}
+	user, err := s.VerifyPassword(ctx, in.TenantID, in.Email, in.Password)
+	if err != nil {
+		return nil, err
+	}
+	now := s.clock.Now().UTC()
+	expiresAt := now.Add(ttl)
+
+	csrf, err := randomString(csrfTokenLen)
+	if err != nil {
+		return nil, fmt.Errorf("generate csrf: %w", err)
+	}
+
+	for range tokenRetryLimit {
+		prefix, err := randomString(prefixLen)
+		if err != nil {
+			return nil, fmt.Errorf("generate session prefix: %w", err)
+		}
+		secret, err := randomString(sessionSecretLen)
+		if err != nil {
+			return nil, fmt.Errorf("generate session secret: %w", err)
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(secret), sessionSecretCost)
+		if err != nil {
+			return nil, fmt.Errorf("hash session secret: %w", err)
+		}
+		sid, err := uuid.NewV7()
+		if err != nil {
+			return nil, fmt.Errorf("generate session uuid: %w", err)
+		}
+		sess := &Session{
+			ID:         sid,
+			UserID:     user.ID,
+			Prefix:     prefix,
+			SecretHash: string(hash),
+			CSRFToken:  csrf,
+			CreatedAt:  now,
+			ExpiresAt:  expiresAt,
+		}
+		if err := s.sessions.Create(ctx, sess); err != nil {
+			if errors.Is(err, ErrAlreadyExists) {
+				continue
+			}
+			return nil, err
+		}
+		return &LoginResult{
+			RawToken:  sessionFormatPrefix + prefix + "_" + secret,
+			CSRFToken: csrf,
+			Session:   sess,
+			User:      user,
+		}, nil
+	}
+	return nil, fmt.Errorf("failed to issue session after %d retries", tokenRetryLimit)
+}
+
+// Logout удаляет session. Не-найденная session — no-op (idempotent).
+func (s *AuthService) Logout(ctx context.Context, sessionID uuid.UUID) error {
+	if s.sessions == nil {
+		return fmt.Errorf("sessions repository not configured")
+	}
+	if err := s.sessions.Delete(ctx, sessionID); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// ValidateSession парсит raw cookie value, ищет session по prefix, проверяет
+// secret_hash и expiry. Возвращает (user, role, session) или ErrUnauthorized.
+func (s *AuthService) ValidateSession(ctx context.Context, raw string) (*User, Role, *Session, error) {
+	if s.sessions == nil {
+		return nil, "", nil, ErrUnauthorized
+	}
+	if !sessionFormatRegex.MatchString(raw) {
+		return nil, "", nil, ErrUnauthorized
+	}
+	rest := raw[len(sessionFormatPrefix):]
+	prefix := rest[:prefixLen]
+	secret := rest[prefixLen+1:]
+
+	sess, err := s.sessions.GetByPrefix(ctx, prefix)
+	if err != nil {
+		return nil, "", nil, ErrUnauthorized
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(sess.SecretHash), []byte(secret)); err != nil {
+		return nil, "", nil, ErrUnauthorized
+	}
+	if s.clock.Now().After(sess.ExpiresAt) {
+		return nil, "", nil, ErrUnauthorized
+	}
+	user, err := s.users.GetByID(ctx, sess.UserID)
+	if err != nil {
+		return nil, "", nil, ErrUnauthorized
+	}
+	go func(id uuid.UUID, t time.Time) {
+		_ = s.sessions.UpdateLastUsedAt(context.Background(), id, t) //nolint:contextcheck // intentional: detached lifecycle
+	}(sess.ID, s.clock.Now().UTC())
+	return user, user.Role, sess, nil
+}
+
+// RefreshCSRF генерирует новый CSRF-token для существующей session.
+func (s *AuthService) RefreshCSRF(ctx context.Context, sessionID uuid.UUID) (string, error) {
+	if s.sessions == nil {
+		return "", fmt.Errorf("sessions repository not configured")
+	}
+	csrf, err := randomString(csrfTokenLen)
+	if err != nil {
+		return "", err
+	}
+	if err := s.sessions.UpdateCSRFToken(ctx, sessionID, csrf); err != nil {
+		return "", err
+	}
+	return csrf, nil
 }

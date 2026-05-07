@@ -31,6 +31,17 @@ type Post struct {
 	UpdatedAt      string
 }
 
+type Session struct {
+	ID         string
+	UserID     string
+	Prefix     string
+	SecretHash string
+	CsrfToken  string
+	CreatedAt  string
+	ExpiresAt  string
+	LastUsedAt sql.NullString
+}
+
 type Token struct {
 	ID         string
 	UserID     string

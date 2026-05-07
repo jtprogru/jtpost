@@ -47,6 +47,9 @@ auth:
   # bcrypt_cost для password hashing. Используется только при type=token.
   # Range [4, 14]. Default 10. PAT-secret cost = 6 (hardcoded, не из конфига).
   bcrypt_cost: 10
+  # session_ttl для cookie-based sessions (POST /api/auth/login).
+  # Range [5m, 720h]. Default 24h.
+  session_ttl: 24h
   # oauth:
   #   provider: github
   #   client_id: ""
@@ -67,6 +70,10 @@ server:
   base_url: ""
   read_timeout: 15s
   write_timeout: 15s
+  # cookie_secure: true в production (HTTPS). false для local HTTP-dev.
+  cookie_secure: true
+  # cookie_domain — опционально; пусто = текущий request host.
+  # cookie_domain: app.example.com
 
 # Telegram bot для публикаций.
 telegram:

@@ -53,7 +53,7 @@ var tokenCreateCmd = &cobra.Command{
 			expPtr = &tokenCreateExpiresIn
 		}
 
-		svc := core.NewAuthService(bundle.Users, bundle.Tokens, cfg.Auth.BCryptCost, core.SystemClock{})
+		svc := core.NewAuthService(bundle.Users, bundle.Tokens, bundle.Sessions, cfg.Auth.BCryptCost, core.SystemClock{})
 		issued, err := svc.IssueToken(context.Background(), userID, tokenCreateName, expPtr)
 		if err != nil {
 			return err

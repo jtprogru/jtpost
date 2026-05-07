@@ -31,6 +31,17 @@ type Post struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type Session struct {
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	Prefix     string
+	SecretHash string
+	CsrfToken  string
+	CreatedAt  pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+	LastUsedAt pgtype.Timestamptz
+}
+
 type Token struct {
 	ID         pgtype.UUID
 	UserID     pgtype.UUID

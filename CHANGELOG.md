@@ -7,6 +7,39 @@
 
 ## [Неопубликовано]
 
+### F4b: Web Sessions + CSRF (cookie-based auth)
+
+**Добавлено:**
+- **Domain types** (`internal/core/session.go`): `Session{ID, UserID, Prefix, SecretHash, CSRFToken, CreatedAt, ExpiresAt, LastUsedAt}`, `LoginInput`, `LoginResult`. Token format `jts_<8 prefix>_<32 secret>` (зеркалит APIToken для O(1) lookup).
+- **Scope helpers**: `core.WithSession/SessionFromContext`, `core.WithAuthSource/AuthSourceFromContext` (`AuthSourceBearer | AuthSourceSession`).
+- **`SessionRepository`** интерфейс (`internal/core/session_repository.go`): GetByPrefix, Create, Delete, DeleteByUser, UpdateLastUsedAt, UpdateCSRFToken.
+- **AuthService extension**: `Login(ctx, in, ttl) (*LoginResult, error)` — verify password + generate session-token + bcrypt-hash + persist; `Logout(ctx, id)` — idempotent hard delete; `ValidateSession(ctx, raw) (*User, Role, *Session, error)` — regex-format check + prefix lookup + secret bcrypt compare + expiry; `RefreshCSRF(ctx, id)`.
+- **Миграция `0003_sessions.sql`** для SQLite + Postgres (FK ON DELETE CASCADE на users.id, UNIQUE prefix, indexes on user_id и expires_at).
+- **SQLite + Postgres адаптеры** — `(*PostRepository).Sessions()` фасад как Users()/Tokens() в F4a.
+- **`Bundle.Sessions core.SessionRepository`** — расширен `storage.OpenBundle`.
+- **HTTP middleware**:
+  - `BearerTokenMiddleware` — переписан в **soft-pass** mode: при missing/invalid token не возвращает 401 сразу, а пропускает next; final 401 — у `RequireAuthMiddleware`. Это позволяет составлять Bearer || Session chain.
+  - `SessionMiddleware(svc)` — извлекает `jtpost_session` cookie, валидирует, populates ctx (User/Tenant/Author/Role/Session/AuthSource=session). Bearer wins при наличии (REQ-4.3).
+  - `CSRFMiddleware()` — double-submit pattern: для state-changing methods + auth.source=session — проверяет `X-CSRF-Token` против `session.CSRFToken` через `subtle.ConstantTimeCompare`. Bearer-only requests CSRF-immune. Skip-list: `/api/auth/{login,logout,csrf}`.
+  - `RequireAuthMiddleware()` — финальный gate, 401 если ctx.User == nil. Skip-list: `/api/auth/{login,logout}`.
+- **HTTP endpoints**:
+  - `POST /api/auth/login` — body `{email, password}` → 200 + Set-Cookie `jtpost_session=jts_...; HttpOnly; Secure; SameSite=Lax; Path=/` + body `{csrf_token, user_id, role, expires_at}`. Если уже есть session — старая revoke'нается.
+  - `POST /api/auth/logout` — idempotent: 200 + `Set-Cookie: jtpost_session=; Max-Age=-1`.
+  - `POST /api/auth/csrf` — refresh CSRF token (требует session, иначе 401); возвращает body+header.
+- **Config**: `Auth.SessionTTL` (default 24h, range [5m, 720h] при `auth.type=token`); `Server.CookieSecure` (default true), `Server.CookieDomain` (опц).
+- **`internal/cli/serve.go`**: при `auth.type=token` подключает chain Bearer → Session → CSRF → RequireAuth (вместо одиночного Bearer).
+- **Зависимости**: без новых external (используется `crypto/subtle`, `crypto/rand`, стандартный `net/http` cookies).
+
+**Backward-compat:** `auth.type=none` сохраняет F1-поведение. `auth.type=token` deployments из F4a продолжают работать (Bearer wins при наличии PAT). Существующие БД получают миграцию `0003_*` автоматически при `Open()`.
+
+**Migration path:**
+1. (Опц.) обновить `auth.session_ttl` в `.jtpost.yaml`.
+2. POST `/api/auth/login {email, password}` → получить `Set-Cookie: jtpost_session=...` и `csrf_token` в response.
+3. Для state-changing API: добавлять `X-CSRF-Token` header вместе с cookie.
+4. POST `/api/auth/logout` для разлогина.
+
+**Отложено в F4c:** OAuth2 (GitHub/Google/Yandex), Argon2id (вместо bcrypt), audit_log, sliding session expiration, session list endpoint, password reset.
+
 ### F4: Auth/RBAC Foundation — local users, PAT, RBAC scaffold, BearerTokenMiddleware
 
 **Добавлено:**

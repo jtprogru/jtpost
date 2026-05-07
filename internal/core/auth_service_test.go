@@ -176,7 +176,72 @@ func newAuthSvc(t *testing.T) (*AuthService, *mockUserRepo, *mockTokenRepo, *aut
 	users := newMockUsers()
 	tokens := newMockTokens()
 	clk := &authClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
-	return NewAuthService(users, tokens, bcrypt.MinCost, clk), users, tokens, clk
+	return NewAuthService(users, tokens, newMockSessions(), bcrypt.MinCost, clk), users, tokens, clk
+}
+
+// mockSessionRepo — in-memory SessionRepository для тестов.
+type mockSessionRepo struct {
+	byID     map[uuid.UUID]*Session
+	byPrefix map[string]*Session
+}
+
+func newMockSessions() *mockSessionRepo {
+	return &mockSessionRepo{byID: map[uuid.UUID]*Session{}, byPrefix: map[string]*Session{}}
+}
+
+func (m *mockSessionRepo) GetByPrefix(_ context.Context, p string) (*Session, error) {
+	s, ok := m.byPrefix[p]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return s, nil
+}
+
+func (m *mockSessionRepo) Create(_ context.Context, s *Session) error {
+	if _, ok := m.byPrefix[s.Prefix]; ok {
+		return ErrAlreadyExists
+	}
+	m.byID[s.ID] = s
+	m.byPrefix[s.Prefix] = s
+	return nil
+}
+
+func (m *mockSessionRepo) Delete(_ context.Context, id uuid.UUID) error {
+	s, ok := m.byID[id]
+	if !ok {
+		return ErrNotFound
+	}
+	delete(m.byID, id)
+	delete(m.byPrefix, s.Prefix)
+	return nil
+}
+
+func (m *mockSessionRepo) DeleteByUser(_ context.Context, uid uuid.UUID) error {
+	for id, s := range m.byID {
+		if s.UserID == uid {
+			delete(m.byID, id)
+			delete(m.byPrefix, s.Prefix)
+		}
+	}
+	return nil
+}
+
+func (m *mockSessionRepo) UpdateLastUsedAt(_ context.Context, id uuid.UUID, t time.Time) error {
+	s, ok := m.byID[id]
+	if !ok {
+		return ErrNotFound
+	}
+	s.LastUsedAt = &t
+	return nil
+}
+
+func (m *mockSessionRepo) UpdateCSRFToken(_ context.Context, id uuid.UUID, csrf string) error {
+	s, ok := m.byID[id]
+	if !ok {
+		return ErrNotFound
+	}
+	s.CSRFToken = csrf
+	return nil
 }
 
 func TestRolePermissions(t *testing.T) {
@@ -408,5 +473,113 @@ func TestAuthService_AuthorizeOperation_NoRoleInCtx(t *testing.T) {
 	err := svc.AuthorizeOperation(context.Background(), PermPostsCreate)
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("want ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestAuthService_Login_Success(t *testing.T) {
+	svc, _, _, _ := newAuthSvc(t)
+	ctx := context.Background()
+	tenantID := uuid.New()
+	_, err := svc.CreateUser(ctx, CreateUserInput{TenantID: tenantID, Email: "a@x.com", Password: "password123", Role: RoleOwner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := svc.Login(ctx, LoginInput{TenantID: tenantID, Email: "a@x.com", Password: "password123"}, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Session == nil || res.User == nil || res.RawToken == "" || res.CSRFToken == "" {
+		t.Fatalf("incomplete LoginResult: %+v", res)
+	}
+	rgx := regexp.MustCompile(`^jts_[A-Za-z0-9]{8}_[A-Za-z0-9]{32}$`)
+	if !rgx.MatchString(res.RawToken) {
+		t.Errorf("RawToken format mismatch: %q", res.RawToken)
+	}
+}
+
+func TestAuthService_Login_WrongPassword(t *testing.T) {
+	svc, _, _, _ := newAuthSvc(t)
+	ctx := context.Background()
+	tenantID := uuid.New()
+	_, _ = svc.CreateUser(ctx, CreateUserInput{TenantID: tenantID, Email: "a@x.com", Password: "password123", Role: RoleOwner})
+	_, err := svc.Login(ctx, LoginInput{TenantID: tenantID, Email: "a@x.com", Password: "wrong"}, time.Hour)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("want ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestAuthService_ValidateSession_Roundtrip(t *testing.T) {
+	svc, _, _, _ := newAuthSvc(t)
+	ctx := context.Background()
+	tenantID := uuid.New()
+	user, _ := svc.CreateUser(ctx, CreateUserInput{TenantID: tenantID, Email: "a@x.com", Password: "password123", Role: RoleEditor})
+	res, _ := svc.Login(ctx, LoginInput{TenantID: tenantID, Email: "a@x.com", Password: "password123"}, time.Hour)
+	gotUser, role, sess, err := svc.ValidateSession(ctx, res.RawToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotUser.ID != user.ID || role != RoleEditor || sess.ID != res.Session.ID {
+		t.Errorf("unexpected: user=%v role=%s sess=%v", gotUser.ID, role, sess.ID)
+	}
+}
+
+func TestAuthService_ValidateSession_Expired(t *testing.T) {
+	svc, _, _, clk := newAuthSvc(t)
+	ctx := context.Background()
+	tenantID := uuid.New()
+	_, _ = svc.CreateUser(ctx, CreateUserInput{TenantID: tenantID, Email: "a@x.com", Password: "password123", Role: RoleOwner})
+	res, _ := svc.Login(ctx, LoginInput{TenantID: tenantID, Email: "a@x.com", Password: "password123"}, time.Hour)
+	clk.now = clk.now.Add(2 * time.Hour)
+	_, _, _, err := svc.ValidateSession(ctx, res.RawToken)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expired session: want ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestAuthService_ValidateSession_BadFormat(t *testing.T) {
+	svc, _, _, _ := newAuthSvc(t)
+	for _, raw := range []string{"", "bad", "jtpat_aaaaaaaa_bbbbbbbbbbbbbbbbbbbbbbbb", "jts_short"} {
+		_, _, _, err := svc.ValidateSession(context.Background(), raw)
+		if !errors.Is(err, ErrUnauthorized) {
+			t.Errorf("raw=%q: want ErrUnauthorized, got %v", raw, err)
+		}
+	}
+}
+
+func TestAuthService_Logout(t *testing.T) {
+	svc, _, _, _ := newAuthSvc(t)
+	ctx := context.Background()
+	tenantID := uuid.New()
+	_, _ = svc.CreateUser(ctx, CreateUserInput{TenantID: tenantID, Email: "a@x.com", Password: "password123", Role: RoleOwner})
+	res, _ := svc.Login(ctx, LoginInput{TenantID: tenantID, Email: "a@x.com", Password: "password123"}, time.Hour)
+	if err := svc.Logout(ctx, res.Session.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, err := svc.ValidateSession(ctx, res.RawToken)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("after logout: want ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestAuthService_Logout_Idempotent(t *testing.T) {
+	svc, _, _, _ := newAuthSvc(t)
+	if err := svc.Logout(context.Background(), uuid.New()); err != nil {
+		t.Fatalf("logout of unknown id should be no-op, got %v", err)
+	}
+}
+
+func TestAuthService_RefreshCSRF(t *testing.T) {
+	svc, _, _, _ := newAuthSvc(t)
+	ctx := context.Background()
+	tenantID := uuid.New()
+	_, _ = svc.CreateUser(ctx, CreateUserInput{TenantID: tenantID, Email: "a@x.com", Password: "password123", Role: RoleOwner})
+	res, _ := svc.Login(ctx, LoginInput{TenantID: tenantID, Email: "a@x.com", Password: "password123"}, time.Hour)
+	oldCSRF := res.Session.CSRFToken
+	newCSRF, err := svc.RefreshCSRF(ctx, res.Session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newCSRF == oldCSRF || newCSRF == "" {
+		t.Errorf("CSRF should change: old=%q new=%q", oldCSRF, newCSRF)
 	}
 }

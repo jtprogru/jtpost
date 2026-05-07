@@ -89,6 +89,7 @@ type AuthConfig struct {
 	OAuth         OAuthConfig   `yaml:"oauth" mapstructure:"oauth"`
 	TokenTTL      time.Duration `yaml:"token_ttl" mapstructure:"token_ttl"`
 	BCryptCost    int           `yaml:"bcrypt_cost,omitempty" mapstructure:"bcrypt_cost"`
+	SessionTTL    time.Duration `yaml:"session_ttl,omitempty" mapstructure:"session_ttl"`
 }
 
 // OAuthConfig настройки OAuth провайдера.
@@ -114,6 +115,8 @@ type ServerConfig struct {
 	BaseURL      string        `yaml:"base_url" mapstructure:"base_url"`
 	ReadTimeout  time.Duration `yaml:"read_timeout" mapstructure:"read_timeout"`
 	WriteTimeout time.Duration `yaml:"write_timeout" mapstructure:"write_timeout"`
+	CookieSecure bool          `yaml:"cookie_secure" mapstructure:"cookie_secure"`
+	CookieDomain string        `yaml:"cookie_domain,omitempty" mapstructure:"cookie_domain"`
 }
 
 // NewDefaultConfig возвращает конфигурацию по умолчанию.
@@ -144,6 +147,7 @@ func NewDefaultConfig() *Config {
 			Type:       "none",
 			TokenTTL:   24 * time.Hour,
 			BCryptCost: 10,
+			SessionTTL: 24 * time.Hour,
 		},
 		Worker: WorkerConfig{
 			Interval:     time.Minute,
@@ -155,6 +159,7 @@ func NewDefaultConfig() *Config {
 			Port:         8080,
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
+			CookieSecure: true,
 		},
 		Defaults: DefaultConfig{
 			Status:    string(core.StatusIdea),
@@ -239,6 +244,8 @@ func loadFromFile(path string) (*Config, error) {
 	v.SetDefault("auth.type", def.Auth.Type)
 	v.SetDefault("auth.token_ttl", def.Auth.TokenTTL)
 	v.SetDefault("auth.bcrypt_cost", def.Auth.BCryptCost)
+	v.SetDefault("auth.session_ttl", def.Auth.SessionTTL)
+	v.SetDefault("server.cookie_secure", def.Server.CookieSecure)
 
 	v.SetDefault("worker.enabled", def.Worker.Enabled)
 	v.SetDefault("worker.interval", def.Worker.Interval)
@@ -264,7 +271,8 @@ func loadFromFile(path string) (*Config, error) {
 		"storage.postgres.dsn", "storage.postgres.max_open_conns",
 		"storage.postgres.max_idle_conns", "storage.postgres.conn_max_lifetime",
 		"auth.type", "auth.secret", "auth.tenant_default", "auth.author_default",
-		"auth.token_ttl", "auth.bcrypt_cost",
+		"auth.token_ttl", "auth.bcrypt_cost", "auth.session_ttl",
+		"server.cookie_secure", "server.cookie_domain",
 		"auth.oauth.provider", "auth.oauth.client_id",
 		"auth.oauth.client_secret", "auth.oauth.redirect_url",
 		"worker.enabled", "worker.interval", "worker.max_retries", "worker.retry_backoff",
@@ -351,6 +359,9 @@ func (c *Config) Validate() error {
 		}
 		if c.Auth.BCryptCost < 4 || c.Auth.BCryptCost > 14 {
 			return fmt.Errorf("%w: auth.bcrypt_cost must be in [4, 14]", core.ErrConfigInvalid)
+		}
+		if c.Auth.SessionTTL > 0 && (c.Auth.SessionTTL < 5*time.Minute || c.Auth.SessionTTL > 720*time.Hour) {
+			return fmt.Errorf("%w: auth.session_ttl must be in [5m, 720h]", core.ErrConfigInvalid)
 		}
 	}
 	return nil

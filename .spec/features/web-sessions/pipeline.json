@@ -1,0 +1,21 @@
+{
+  "feature": "web-sessions",
+  "phase": "done",
+  "created_at": "2026-05-07T08:42:43Z",
+  "current_artifact": null,
+  "history": [
+    {"phase": "explore", "artifact": ".spec/features/web-sessions/explore.md", "approved_at": "2026-05-07T08:44:24Z"},
+    {"phase": "requirements", "artifact": ".spec/features/web-sessions/requirements.md", "approved_at": "2026-05-07T08:45:55Z"},
+    {"phase": "design", "artifact": ".spec/features/web-sessions/design.md", "approved_at": "2026-05-07T08:47:48Z"},
+    {"phase": "task-plan", "artifact": ".spec/features/web-sessions/task-plan.md", "approved_at": "2026-05-07T08:49:21Z"},
+    {"phase": "implementation", "artifact": ".spec/features/web-sessions/implementation.md", "approved_at": "2026-05-07T09:03:33Z"},
+    {"phase": "review", "artifact": ".spec/features/web-sessions/review.md", "approved_at": "2026-05-07T09:05:30Z"}
+  ],
+  "review_base_commit": "00a59dfba6f1dedb409a140301ee3d0c788a1501",
+  "branch": "feature/web-sessions",
+  "worktree": null,
+  "last_completed_task": null,
+  "finish_action": null,
+  "finished_at": null,
+  "finish_base": null
+}

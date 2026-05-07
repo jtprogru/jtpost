@@ -23,7 +23,7 @@ func setupBearer(t *testing.T) (*core.AuthService, string /* validRaw */, *core.
 	}
 	t.Cleanup(func() { _ = repo.Close() })
 
-	svc := core.NewAuthService(repo.Users(), repo.Tokens(), bcrypt.MinCost, core.SystemClock{})
+	svc := core.NewAuthService(repo.Users(), repo.Tokens(), repo.Sessions(), bcrypt.MinCost, core.SystemClock{})
 	ctx := context.Background()
 	user, err := svc.CreateUser(ctx, core.CreateUserInput{
 		TenantID: uuid.New(),
@@ -41,10 +41,14 @@ func setupBearer(t *testing.T) (*core.AuthService, string /* validRaw */, *core.
 	return svc, issued.Raw, user
 }
 
+// authChain — Bearer (soft-pass) → RequireAuth (final 401). Используется в bearer-тестах.
+func authChain(svc *core.AuthService, h http.Handler) http.Handler {
+	return BearerTokenMiddleware(svc)(RequireAuthMiddleware()(h))
+}
+
 func TestBearerMiddleware_NoHeader_401(t *testing.T) {
 	svc, _, _ := setupBearer(t)
-	mw := BearerTokenMiddleware(svc)
-	handler := mw(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	handler := authChain(svc, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Error("handler must not be invoked")
 	}))
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
@@ -57,10 +61,9 @@ func TestBearerMiddleware_NoHeader_401(t *testing.T) {
 
 func TestBearerMiddleware_BadFormat_401(t *testing.T) {
 	svc, _, _ := setupBearer(t)
-	mw := BearerTokenMiddleware(svc)
 	for _, hdr := range []string{"Basic xyz", "Bearer", "bearer abc", "TokenAuth jtpat_..."} {
 		t.Run(hdr, func(t *testing.T) {
-			handler := mw(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			handler := authChain(svc, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 				t.Error("handler must not be invoked")
 			}))
 			req := httptest.NewRequest(http.MethodGet, "/x", nil)
@@ -76,8 +79,7 @@ func TestBearerMiddleware_BadFormat_401(t *testing.T) {
 
 func TestBearerMiddleware_InvalidToken_401(t *testing.T) {
 	svc, _, _ := setupBearer(t)
-	mw := BearerTokenMiddleware(svc)
-	handler := mw(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	handler := authChain(svc, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		t.Error("handler must not be invoked")
 	}))
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
