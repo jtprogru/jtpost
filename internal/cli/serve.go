@@ -66,8 +66,9 @@ var serveCmd = &cobra.Command{
 		// Telegram publisher
 		if cfg.Telegram.BotToken != "" && cfg.Telegram.ChatID != "" {
 			publisher = telegram.NewPublisher(telegram.Config{
-				BotToken:  cfg.Telegram.BotToken,
-				ChannelID: cfg.Telegram.ChatID,
+				BotToken:    cfg.Telegram.BotToken,
+				ChannelID:   cfg.Telegram.ChatID,
+				SiteBaseURL: cfg.Server.BaseURL,
 			})
 			log.Info("✅ Telegram publisher инициализирован")
 		} else {

@@ -81,8 +81,9 @@ func publishToTelegram(ctx context.Context, post *core.Post, cfg *config.Config,
 
 	// Создаём publisher
 	tgCfg := telegram.Config{
-		BotToken:  cfg.Telegram.BotToken,
-		ChannelID: cfg.Telegram.ChatID,
+		BotToken:    cfg.Telegram.BotToken,
+		ChannelID:   cfg.Telegram.ChatID,
+		SiteBaseURL: cfg.Server.BaseURL,
 	}
 	publisher := telegram.NewPublisher(tgCfg)
 

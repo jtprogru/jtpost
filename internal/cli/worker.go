@@ -48,7 +48,7 @@ var workerRunCmd = &cobra.Command{
 		if cfg.Telegram.BotToken == "" || cfg.Telegram.ChatID == "" {
 			return fmt.Errorf("telegram bot_token и chat_id обязательны для worker")
 		}
-		pub := telegram.NewPublisher(telegram.Config{BotToken: cfg.Telegram.BotToken, ChannelID: cfg.Telegram.ChatID})
+		pub := telegram.NewPublisher(telegram.Config{BotToken: cfg.Telegram.BotToken, ChannelID: cfg.Telegram.ChatID, SiteBaseURL: cfg.Server.BaseURL})
 		log := logger.New(logger.Config{
 			Output: os.Stdout,
 			Debug:  workerVerbose,

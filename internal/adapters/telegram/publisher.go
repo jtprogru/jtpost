@@ -22,13 +22,21 @@ type Publisher struct {
 	channelID string
 	client    *http.Client
 	baseURL   string
+	siteURL   string // абсолютный URL сайта для resolve относительных путей картинок
 }
 
 // Config конфигурация Telegram Publisher.
 type Config struct {
 	BotToken  string `yaml:"bot_token"`
 	ChannelID string `yaml:"channel_id"` // @channelname или -1001234567890
+	// SiteBaseURL — абсолютный URL сервиса (server.base_url). Используется чтобы
+	// markdown-image вида `/ui/uploads/...` превращать в публичный URL, который
+	// Telegram сам скачает через sendPhoto. Если пуст — медиа не отправляется.
+	SiteBaseURL string `yaml:"site_base_url"`
 }
+
+// telegramCaptionLimit — лимит caption на одно фото.
+const telegramCaptionLimit = 1024
 
 // NewPublisher создаёт новый Telegram Publisher.
 func NewPublisher(cfg Config) *Publisher {
@@ -37,6 +45,7 @@ func NewPublisher(cfg Config) *Publisher {
 		channelID: cfg.ChannelID,
 		client:    &http.Client{Timeout: 30 * time.Second},
 		baseURL:   "https://api.telegram.org/bot",
+		siteURL:   strings.TrimRight(cfg.SiteBaseURL, "/"),
 	}
 }
 
@@ -46,16 +55,38 @@ func (p *Publisher) Publish(ctx context.Context, post *core.Post) (*core.Post, e
 		return nil, fmt.Errorf("%w: пустой контент поста", core.ErrValidation)
 	}
 
-	// Конвертируем Markdown в Telegram HTML
-	htmlContent := telegramconv.MarkdownToHTML(post.Content)
+	// Если есть картинки и сконфигурирован SiteBaseURL — отправляем фото
+	// как primary message (с caption=title+content, если умещается).
+	images := ExtractImages(post.Content)
+	contentForCaption := StripImages(post.Content)
+	htmlBody := telegramconv.MarkdownToHTML(contentForCaption)
+	primaryHTML := fmt.Sprintf("<b>%s</b>\n\n%s", telegramconv.EscapeHTML(post.Title), htmlBody)
 
-	// Формируем сообщение с заголовком
-	messageText := fmt.Sprintf("<b>%s</b>\n\n%s", telegramconv.EscapeHTML(post.Title), htmlContent)
-
-	// Отправляем сообщение
-	msgURL, err := p.sendMessage(ctx, messageText)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка отправки сообщения: %w", err)
+	var msgURL string
+	var err error
+	if photoURL := p.firstResolvableImage(images); photoURL != "" {
+		caption := primaryHTML
+		var followup string
+		if len(caption) > telegramCaptionLimit {
+			// Caption — title-only; полный body уйдёт отдельным сообщением.
+			caption = fmt.Sprintf("<b>%s</b>", telegramconv.EscapeHTML(post.Title))
+			followup = htmlBody
+		}
+		msgURL, err = p.sendPhoto(ctx, photoURL, caption)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка отправки фото: %w", err)
+		}
+		if followup != "" {
+			if _, ferr := p.sendMessage(ctx, followup); ferr != nil {
+				// Фото уже отправлено — лишь логируем followup-провал в ошибке.
+				return nil, fmt.Errorf("ошибка follow-up сообщения: %w", ferr)
+			}
+		}
+	} else {
+		msgURL, err = p.sendMessage(ctx, primaryHTML)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка отправки сообщения: %w", err)
+		}
 	}
 
 	// Обновляем пост с ссылкой
@@ -135,6 +166,66 @@ func (p *Publisher) GetMe(ctx context.Context) (*BotInfo, error) {
 	}
 
 	return &result.Result, nil
+}
+
+// firstResolvableImage возвращает первый image URL, который Telegram сможет
+// fetch'ить — абсолютный (https://...) или относительный, разрешённый через
+// p.siteURL. Если siteURL не задан и URL относительный — возвращается "".
+func (p *Publisher) firstResolvableImage(imgs []MDImage) string {
+	for _, im := range imgs {
+		if strings.HasPrefix(im.URL, "https://") || strings.HasPrefix(im.URL, "http://") {
+			return im.URL
+		}
+		if p.siteURL == "" || !strings.HasPrefix(im.URL, "/") {
+			continue
+		}
+		return p.siteURL + im.URL
+	}
+	return ""
+}
+
+// sendPhoto публикует фото с опциональным caption. Возвращает URL поста.
+func (p *Publisher) sendPhoto(ctx context.Context, photoURL, caption string) (string, error) {
+	apiURL := fmt.Sprintf("%s%s/sendPhoto", p.baseURL, p.botToken)
+	payload := map[string]any{
+		"chat_id":    p.channelID,
+		"photo":      photoURL,
+		"caption":    caption,
+		"parse_mode": "HTML",
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("ошибка сериализации: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("ошибка создания запроса: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ошибка HTTP запроса: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("ошибка чтения ответа: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API вернул ошибку: %s", string(respBody))
+	}
+	var result struct {
+		OK     bool            `json:"ok"`
+		Result telegramMessage `json:"result"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("ошибка десериализации ответа: %w", err)
+	}
+	if !result.OK {
+		return "", errors.New("API вернул ok=false")
+	}
+	channelName := strings.TrimPrefix(p.channelID, "-100")
+	return fmt.Sprintf("https://t.me/%s/%d", channelName, result.Result.MessageID), nil
 }
 
 // sendMessage отправляет текстовое сообщение в канал.
