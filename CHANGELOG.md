@@ -7,6 +7,39 @@
 
 ## [Неопубликовано]
 
+### F4: Auth/RBAC Foundation — local users, PAT, RBAC scaffold, BearerTokenMiddleware
+
+**Добавлено:**
+- **Domain types** (`internal/core/user.go`): `User`, `APIToken`, `Role` (4 hardcoded: owner/editor/author/viewer), `Permission` (6 атомарных: posts:create/edit/delete/publish, users:manage, tokens:manage), `RolePermissions(role)` mapping.
+- **Новые ошибки**: `core.ErrUnauthorized`, `core.ErrForbidden`.
+- **Scope helpers**: `core.WithUser/UserFromContext`, `core.WithRole/RoleFromContext`.
+- **AuthService** (`internal/core/auth_service.go`): `CreateUser` (bcrypt password hash), `VerifyPassword`, `IssueToken` / `ValidateToken` / `RevokeToken` (PAT format `jtpat_<8prefix>_<24secret>`, server-side bcrypt-hash lookup), `AuthorizeOperation`. PAT-secret bcrypt cost = 6 (hardcoded; secret имеет ~140-bit entropy), password cost = `cfg.Auth.BCryptCost` (default 10). Async `LastUsedAt` update.
+- **UserRepository / TokenRepository** интерфейсы (`internal/core/user_repository.go`).
+- **SQLite + Postgres адаптеры** реализуют оба интерфейса через композицию (`*sqlite.PostRepository.Users()` / `.Tokens()`). sqlc-кодген + goose-миграция `0002_users_tokens.sql` (FK ON DELETE CASCADE для tokens).
+- **Storage Bundle** (`storage.OpenBundle(cfg) (*Bundle, error)`): `Bundle{Posts, Users, Tokens, Closer}`. Для `fs` Users/Tokens = nil. F2-API `OpenAs(cfg, type)` сохранён как shim для CLI-команд работающих только с posts.
+- **BearerTokenMiddleware** (`httpapi.BearerTokenMiddleware(authService)`) заменяет F1-заглушку при `cfg.Auth.Type == "token"`. Без header или с невалидным/expired токеном → HTTP 401 `{"error":"unauthorized"}`. При success — кладёт User/TenantID/AuthorID/Role в context.
+- **CLI команды**:
+  - `jtpost user create --email <e> --password <p> [--role <r>] [--first-owner]` — `--first-owner` работает только при пустой users-таблице (bootstrap).
+  - `jtpost user list` / `delete <id>` — `delete` отказывается удалять последнего owner.
+  - `jtpost token create --user-id <id> --name <name> [--expires-in <duration>]` — выводит PAT plain-text один раз.
+  - `jtpost token list --user-id <id>` / `revoke <id>`.
+  - Все команды требуют `storage.type=sqlite|postgres`; при `fs` возвращают error.
+- **`Config.Auth.BCryptCost`** новое поле (default 10). `Validate()` дополнен:
+  - `auth.type ∉ {"", none, token}` → `ErrConfigInvalid` (basic/oauth — отложены в F4b/F4c).
+  - `auth.type=token && storage.type=fs` → `ErrConfigInvalid`.
+  - `auth.bcrypt_cost ∉ [4, 14]` (только при `auth.type=token`) → `ErrConfigInvalid`.
+- **Зависимости**: `golang.org/x/crypto/bcrypt`.
+
+**Migration path:**
+1. (Опц.) Включить auth: переключить `storage.type` на `sqlite` или `postgres`, установить `auth.type=token`.
+2. `jtpost user create --first-owner --email me@x.com --password ...` → создан первый `owner`.
+3. `jtpost token create --user-id <uuid> --name cli` → получен PAT.
+4. `Authorization: Bearer jtpat_...` для всех API-запросов.
+
+**Backward-compat:** при `auth.type=none` (default) — F1-поведение `TenantFromConfigMiddleware` сохраняется.
+
+**Отложено в F4b/F4c:** OAuth2 (GitHub/Google/Yandex), Argon2id (вместо bcrypt — миграция в F4b), cookie-sessions + CSRF (для F8 Web UI), `jtpost auth login` interactive command, audit_log, per-channel RBAC, token cleanup CLI, email-based password reset, 2FA, rate limiting.
+
 ### F3: Git-storage decorator — auto-commit/push поверх FS-репозитория
 
 **Добавлено:**

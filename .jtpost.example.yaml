@@ -36,11 +36,17 @@ storage:
 # Аутентификация и multi-tenant scope.
 # tenant_default / author_default — UUIDv7 идентификаторы, генерируются командой `jtpost init`.
 auth:
-  type: none  # none | basic | oauth | token
+  # type: none → F1-заглушка (tenant из конфига идёт в context).
+  # type: token → BearerTokenMiddleware валидирует PAT (требует storage.type=sqlite|postgres).
+  # OAuth и basic — отложены в F4b/F4c.
+  type: none
   secret: ""
   tenant_default: 01900000-0000-7000-8000-000000000001
   author_default: 01900000-0000-7000-8000-000000000002
   token_ttl: 24h
+  # bcrypt_cost для password hashing. Используется только при type=token.
+  # Range [4, 14]. Default 10. PAT-secret cost = 6 (hardcoded, не из конфига).
+  bcrypt_cost: 10
   # oauth:
   #   provider: github
   #   client_id: ""

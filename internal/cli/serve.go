@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jtprogru/jtpost/internal/adapters/httpapi"
+	"github.com/jtprogru/jtpost/internal/adapters/storage"
 	"github.com/jtprogru/jtpost/internal/adapters/telegram"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/jtprogru/jtpost/internal/logger"
@@ -48,15 +49,15 @@ var serveCmd = &cobra.Command{
 			return err
 		}
 
-		// Создаём репозиторий
-		repo, closer, err := openRepo(cfg)
+		// Создаём Bundle (включает Posts/Users/Tokens)
+		bundle, err := storage.OpenBundle(cfg)
 		if err != nil {
 			return fmt.Errorf("ошибка создания репозитория: %w", err)
 		}
-		defer closer.Close()
+		defer bundle.Closer.Close()
 
 		// Создаём сервис
-		service := core.NewPostService(repo, core.SystemClock{})
+		service := core.NewPostService(bundle.Posts, core.SystemClock{})
 
 		// Создаём publisher
 		var publisher core.Publisher
@@ -81,7 +82,18 @@ var serveCmd = &cobra.Command{
 		server := httpapi.NewServerWithConfig(serverCfg)
 
 		// Оборачиваем сервер в middleware
-		handler := httpapi.LoggingMiddleware(log, server)
+		var handler http.Handler = server
+		if cfg.Auth.Type == "token" {
+			if bundle.Users == nil || bundle.Tokens == nil {
+				return fmt.Errorf("auth.type=token requires sqlite or postgres storage")
+			}
+			authSvc := core.NewAuthService(bundle.Users, bundle.Tokens, cfg.Auth.BCryptCost, core.SystemClock{})
+			handler = httpapi.BearerTokenMiddleware(authSvc)(handler)
+			log.Info("🔐 Bearer-token auth включён")
+		} else {
+			handler = httpapi.TenantFromConfigMiddleware(cfg)(handler)
+		}
+		handler = httpapi.LoggingMiddleware(log, handler)
 		handler = httpapi.RecoveryMiddleware(log, handler)
 
 		// Настраиваем адрес

@@ -1,0 +1,21 @@
+{
+  "feature": "auth-rbac-foundation",
+  "phase": "done",
+  "created_at": "2026-05-07T08:13:04Z",
+  "current_artifact": null,
+  "history": [
+    {"phase": "explore", "artifact": ".spec/features/auth-rbac-foundation/explore.md", "approved_at": "2026-05-07T08:15:33Z"},
+    {"phase": "requirements", "artifact": ".spec/features/auth-rbac-foundation/requirements.md", "approved_at": "2026-05-07T08:17:15Z"},
+    {"phase": "design", "artifact": ".spec/features/auth-rbac-foundation/design.md", "approved_at": "2026-05-07T08:20:27Z"},
+    {"phase": "task-plan", "artifact": ".spec/features/auth-rbac-foundation/task-plan.md", "approved_at": "2026-05-07T08:22:39Z"},
+    {"phase": "implementation", "artifact": ".spec/features/auth-rbac-foundation/implementation.md", "approved_at": "2026-05-07T08:37:54Z"},
+    {"phase": "review", "artifact": ".spec/features/auth-rbac-foundation/review.md", "approved_at": "2026-05-07T08:40:31Z"}
+  ],
+  "review_base_commit": "be85e53b0780dac31be532e5c95addbbea20505d",
+  "branch": "feature/auth-rbac-foundation",
+  "worktree": null,
+  "last_completed_task": null,
+  "finish_action": null,
+  "finished_at": null,
+  "finish_base": null
+}

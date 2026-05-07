@@ -88,6 +88,7 @@ type AuthConfig struct {
 	AuthorDefault uuid.UUID     `yaml:"author_default" mapstructure:"author_default"`
 	OAuth         OAuthConfig   `yaml:"oauth" mapstructure:"oauth"`
 	TokenTTL      time.Duration `yaml:"token_ttl" mapstructure:"token_ttl"`
+	BCryptCost    int           `yaml:"bcrypt_cost,omitempty" mapstructure:"bcrypt_cost"`
 }
 
 // OAuthConfig настройки OAuth провайдера.
@@ -140,8 +141,9 @@ func NewDefaultConfig() *Config {
 			},
 		},
 		Auth: AuthConfig{
-			Type:     "none",
-			TokenTTL: 24 * time.Hour,
+			Type:       "none",
+			TokenTTL:   24 * time.Hour,
+			BCryptCost: 10,
 		},
 		Worker: WorkerConfig{
 			Interval:     time.Minute,
@@ -236,6 +238,7 @@ func loadFromFile(path string) (*Config, error) {
 
 	v.SetDefault("auth.type", def.Auth.Type)
 	v.SetDefault("auth.token_ttl", def.Auth.TokenTTL)
+	v.SetDefault("auth.bcrypt_cost", def.Auth.BCryptCost)
 
 	v.SetDefault("worker.enabled", def.Worker.Enabled)
 	v.SetDefault("worker.interval", def.Worker.Interval)
@@ -261,7 +264,7 @@ func loadFromFile(path string) (*Config, error) {
 		"storage.postgres.dsn", "storage.postgres.max_open_conns",
 		"storage.postgres.max_idle_conns", "storage.postgres.conn_max_lifetime",
 		"auth.type", "auth.secret", "auth.tenant_default", "auth.author_default",
-		"auth.token_ttl",
+		"auth.token_ttl", "auth.bcrypt_cost",
 		"auth.oauth.provider", "auth.oauth.client_id",
 		"auth.oauth.client_secret", "auth.oauth.redirect_url",
 		"worker.enabled", "worker.interval", "worker.max_retries", "worker.retry_backoff",
@@ -338,6 +341,17 @@ func (c *Config) Validate() error {
 	}
 	if c.Auth.AuthorDefault == uuid.Nil {
 		return fmt.Errorf("%w: auth.author_default required", core.ErrConfigInvalid)
+	}
+	if c.Auth.Type != "" && c.Auth.Type != "none" && c.Auth.Type != "token" {
+		return fmt.Errorf("%w: invalid auth.type %q (must be none|token in F4a)", core.ErrConfigInvalid, c.Auth.Type)
+	}
+	if c.Auth.Type == "token" {
+		if c.Storage.Type == "fs" {
+			return fmt.Errorf("%w: auth.type=token requires storage.type=sqlite or postgres", core.ErrConfigInvalid)
+		}
+		if c.Auth.BCryptCost < 4 || c.Auth.BCryptCost > 14 {
+			return fmt.Errorf("%w: auth.bcrypt_cost must be in [4, 14]", core.ErrConfigInvalid)
+		}
 	}
 	return nil
 }

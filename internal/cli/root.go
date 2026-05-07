@@ -65,6 +65,8 @@ func init() {
 	// migrateDBCmd регистрируется как subcommand migrateCmd в migrate_db.go init().
 	rootCmd.AddCommand(migrateIDsCmd)
 	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(userCmd)
+	rootCmd.AddCommand(tokenCmd)
 }
 
 func initConfig() {

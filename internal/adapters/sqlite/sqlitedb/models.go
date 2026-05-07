@@ -30,3 +30,24 @@ type Post struct {
 	CreatedAt      string
 	UpdatedAt      string
 }
+
+type Token struct {
+	ID         string
+	UserID     string
+	Prefix     string
+	SecretHash string
+	Name       string
+	CreatedAt  string
+	ExpiresAt  sql.NullString
+	LastUsedAt sql.NullString
+}
+
+type User struct {
+	ID           string
+	TenantID     string
+	Email        string
+	PasswordHash string
+	Role         string
+	CreatedAt    string
+	UpdatedAt    string
+}

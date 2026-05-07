@@ -141,6 +141,48 @@ func TestOpen_Dispatch_FS_GitDisabled_Unchanged(t *testing.T) {
 	}
 }
 
+func TestOpenBundle_FS_NoUsersTokens(t *testing.T) {
+	cfg := mkCfg(t, func(c *config.Config) { c.Storage.Type = "fs" })
+	b, err := OpenBundle(cfg)
+	if err != nil {
+		t.Fatalf("OpenBundle(fs): %v", err)
+	}
+	defer b.Closer.Close()
+	if b.Posts == nil {
+		t.Error("Posts must be non-nil")
+	}
+	if b.Users != nil {
+		t.Errorf("Users must be nil for fs, got %T", b.Users)
+	}
+	if b.Tokens != nil {
+		t.Errorf("Tokens must be nil for fs, got %T", b.Tokens)
+	}
+}
+
+func TestOpenBundle_SQLite_AllReposNonNil(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "x.db")
+	cfg := mkCfg(t, func(c *config.Config) {
+		c.Storage.Type = "sqlite"
+		c.Storage.SQLite.DSN = dbPath
+	})
+	b, err := OpenBundle(cfg)
+	if err != nil {
+		t.Fatalf("OpenBundle(sqlite): %v", err)
+	}
+	defer b.Closer.Close()
+	if b.Posts == nil || b.Users == nil || b.Tokens == nil {
+		t.Errorf("all repos must be non-nil for sqlite, got %v / %v / %v", b.Posts == nil, b.Users == nil, b.Tokens == nil)
+	}
+}
+
+func TestOpenBundle_InvalidType(t *testing.T) {
+	cfg := mkCfg(t, func(c *config.Config) { c.Storage.Type = "mongo" })
+	_, err := OpenBundle(cfg)
+	if !errors.Is(err, core.ErrConfigInvalid) {
+		t.Fatalf("want ErrConfigInvalid, got %v", err)
+	}
+}
+
 func TestOpenAs_OverridesType(t *testing.T) {
 	cfg := mkCfg(t, func(c *config.Config) { c.Storage.Type = "postgres" })
 	repo, closer, err := OpenAs(cfg, "fs")

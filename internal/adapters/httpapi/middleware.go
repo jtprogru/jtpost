@@ -2,7 +2,9 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jtprogru/jtpost/internal/adapters/config"
@@ -86,6 +88,44 @@ func LoggingMiddleware(log *logger.Logger, next http.Handler) http.Handler {
 			duration.Round(time.Millisecond),
 		)
 	})
+}
+
+// BearerTokenMiddleware валидирует PAT из заголовка Authorization и кладёт
+// User/TenantID/Role в context. При отсутствии или невалидном токене —
+// возвращает HTTP 401 без передачи запроса handler'у.
+func BearerTokenMiddleware(svc *core.AuthService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHdr := r.Header.Get("Authorization")
+			const prefix = "Bearer "
+			if !strings.HasPrefix(authHdr, prefix) {
+				writeUnauthorized(w)
+				return
+			}
+			raw := strings.TrimSpace(authHdr[len(prefix):])
+			if raw == "" {
+				writeUnauthorized(w)
+				return
+			}
+			user, role, err := svc.ValidateToken(r.Context(), raw)
+			if err != nil {
+				writeUnauthorized(w)
+				return
+			}
+			ctx := r.Context()
+			ctx = core.WithUser(ctx, user)
+			ctx = core.WithTenant(ctx, user.TenantID)
+			ctx = core.WithAuthor(ctx, user.ID)
+			ctx = core.WithRole(ctx, role)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func writeUnauthorized(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 }
 
 // RecoveryMiddleware middleware для восстановления после паник.

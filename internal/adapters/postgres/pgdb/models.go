@@ -30,3 +30,24 @@ type Post struct {
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
 }
+
+type Token struct {
+	ID         pgtype.UUID
+	UserID     pgtype.UUID
+	Prefix     string
+	SecretHash string
+	Name       string
+	CreatedAt  pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+	LastUsedAt pgtype.Timestamptz
+}
+
+type User struct {
+	ID           pgtype.UUID
+	TenantID     pgtype.UUID
+	Email        string
+	PasswordHash string
+	Role         string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}

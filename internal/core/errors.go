@@ -21,6 +21,16 @@ var (
 	ErrMigrationFailed = errors.New("migration failed")
 )
 
+// Ошибки аутентификации/авторизации (F4).
+var (
+	// ErrUnauthorized возвращается при отсутствии валидного auth-токена
+	// или несовпадении password в VerifyPassword.
+	ErrUnauthorized = errors.New("unauthorized")
+	// ErrForbidden возвращается из AuthorizeOperation, когда role не имеет
+	// требуемого permission.
+	ErrForbidden = errors.New("forbidden")
+)
+
 // Ошибки валидации.
 var (
 	ErrEmptyTitle    = errors.New("title cannot be empty")
