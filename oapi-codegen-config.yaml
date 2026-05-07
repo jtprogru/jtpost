@@ -1,0 +1,9 @@
+# oapi-codegen v2 config: types-only generation для F5.
+# Запускается через `task generate:openapi`.
+package: oapigen
+output: internal/adapters/httpapi/oapigen/types.gen.go
+generate:
+  models: true
+  embedded-spec: false
+output-options:
+  skip-prune: true

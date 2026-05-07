@@ -1,0 +1,21 @@
+{
+  "feature": "openapi-spec",
+  "phase": "done",
+  "created_at": "2026-05-07T09:36:34Z",
+  "current_artifact": null,
+  "history": [
+    {"phase": "explore", "artifact": ".spec/features/openapi-spec/explore.md", "approved_at": "2026-05-07T09:37:56Z"},
+    {"phase": "requirements", "artifact": ".spec/features/openapi-spec/requirements.md", "approved_at": "2026-05-07T09:38:49Z"},
+    {"phase": "design", "artifact": ".spec/features/openapi-spec/design.md", "approved_at": "2026-05-07T09:39:56Z"},
+    {"phase": "task-plan", "artifact": ".spec/features/openapi-spec/task-plan.md", "approved_at": "2026-05-07T09:40:55Z"},
+    {"phase": "implementation", "artifact": ".spec/features/openapi-spec/implementation.md", "approved_at": "2026-05-07T10:23:12Z"},
+    {"phase": "review", "artifact": ".spec/features/openapi-spec/review.md", "approved_at": "2026-05-07T10:23:51Z"}
+  ],
+  "review_base_commit": "33fa1350b3f0fa347f1369879e78fec53728c800",
+  "branch": "feature/openapi-spec",
+  "worktree": null,
+  "last_completed_task": null,
+  "finish_action": null,
+  "finished_at": null,
+  "finish_base": null
+}

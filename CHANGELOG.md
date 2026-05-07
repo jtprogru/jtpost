@@ -7,6 +7,29 @@
 
 ## [Неопубликовано]
 
+### F5: OpenAPI 3.1 spec + types codegen (start of B.3)
+
+**Добавлено:**
+- **`api/openapi.yaml`** — формальная OpenAPI 3.1 спецификация всех 13 public HTTP endpoints (posts CRUD + publish, stats/plan/tags/next, auth login/logout/csrf, oauth/{provider}+callback). Декларирует `bearerAuth` (HTTP Bearer "PAT") и `cookieAuth` (apiKey/cookie) как security schemes.
+- **`tools.go`** (build-tag `tools`) с blank-import `github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen` — стандартный pattern для tracking build-tools в `go.mod`.
+- **`oapi-codegen-config.yaml`** — types-only generation. Output: `internal/adapters/httpapi/oapigen/types.gen.go`.
+- **Generated types** в `internal/adapters/httpapi/oapigen/types.gen.go` (38 top-level): `Post`, `Attachment`, `AttachmentType` (enum), `PublishAttempt`, `ExternalLinks`, `PostStatus`, `Role` (enum), `LoginRequest/Response`, `CsrfResponse`, `Stats`, `PlanItem`, `TagsResponse`, `OAuthCallbackQuery`, `ErrorResponse` + parameter aliases. UUID-fields через `x-go-type: uuid.UUID` overrides.
+- **`task generate`** теперь aggregate (sqlc + oapi-codegen). Subtasks: `task generate:sqlc`, `task generate:openapi`.
+- **`/api/v1/...` aliases** для всех endpoints. Legacy `/api/...` сохранён (backward-compat). Mechanism — helper `bothPrefixes` в `server.go` регистрирует handler под двумя путями.
+- **Refactor LoginHandler** использует `oapigen.LoginRequest`/`LoginResponse` вместо local structs.
+- **Зависимости**: `github.com/oapi-codegen/oapi-codegen/v2` (build-tool), `github.com/oapi-codegen/runtime` (transient через generated code).
+
+**Backward-compat:** existing `/api/...` routes продолжают работать. New `/api/v1/...` дублирует. Existing API contract стабилизируется.
+
+**Migration path:** клиенты постепенно мигрируют на `/api/v1/...`. Legacy `/api/...` поддерживается с deprecation в follow-up F5b/c.
+
+**Отложено в F5b/F5c:**
+- Server-side ServerInterface codegen (full handler replacement через oapi-codegen).
+- CLI Go-client codegen + `--remote` mode.
+- Legacy `/api/...` deprecation period and removal.
+- ReDoc/Swagger UI на `/api/docs`.
+- Request validation middleware (kin-openapi).
+
 ### F4c: OAuth GitHub + Argon2id (закрытие B.2)
 
 **Добавлено:**

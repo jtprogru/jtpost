@@ -1,0 +1,830 @@
+openapi: 3.1.0
+info:
+  title: jtpost API
+  version: 0.10.0
+  description: |
+    REST API для jtpost — CLI/web-сервиса управления постами для Telegram.
+
+    Текущая стабильная версия — `/api/v1/`. Legacy `/api/` сохранён для backward-compat.
+
+    Authentication:
+    - `bearerAuth` — Personal Access Token (`jtpat_<8>_<24>`) в `Authorization: Bearer ...`.
+    - `cookieAuth` — Session cookie `jtpost_session` (HttpOnly, Secure, SameSite=Lax).
+  license:
+    name: MIT
+
+servers:
+  - url: /api/v1
+    description: Versioned API (stable)
+  - url: /api
+    description: Legacy (без версии, backward-compat)
+
+tags:
+  - name: posts
+    description: CRUD и публикация постов
+  - name: stats
+    description: Агрегаты, план публикаций, теги
+  - name: auth
+    description: Email/password сессии и CSRF
+  - name: oauth
+    description: OAuth2 (GitHub) login flow
+
+paths:
+  /posts:
+    get:
+      summary: List posts
+      operationId: listPosts
+      tags: [posts]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Фильтр по PostStatus (можно повторять)
+          schema:
+            type: string
+        - name: tag
+          in: query
+          description: Фильтр по тегу (можно повторять)
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, updated_at, deadline, scheduled_at, title, status]
+        - name: sort_order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Список постов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Post'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      summary: Create post
+      operationId: createPost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '201':
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /posts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PostIdParam'
+    get:
+      summary: Get post by ID
+      operationId: getPost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Post
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update post
+      operationId: updatePost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostRequest'
+      responses:
+        '200':
+          description: Updated post
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete post
+      operationId: deletePost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '204':
+          description: Post deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /posts/{id}/publish:
+    parameters:
+      - $ref: '#/components/parameters/PostIdParam'
+    post:
+      summary: Publish post
+      operationId: publishPost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Published post
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /stats:
+    get:
+      summary: Get statistics
+      operationId: getStats
+      tags: [stats]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Stats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /plan:
+    get:
+      summary: Get publish plan
+      operationId: getPlan
+      tags: [stats]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 30
+      responses:
+        '200':
+          description: Plan
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tags:
+    get:
+      summary: List unique tags
+      operationId: listTags
+      tags: [stats]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Tags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /next:
+    get:
+      summary: Get next post recommendation
+      operationId: getNextPost
+      tags: [stats]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Next post
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /auth/login:
+    post:
+      summary: Login with email + password
+      operationId: login
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Logged in (session cookie set)
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: jtpost_session=jts_...; HttpOnly; Secure; SameSite=Lax; Path=/
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      summary: Logout (idempotent)
+      operationId: logout
+      tags: [auth]
+      responses:
+        '200':
+          description: Logged out (session cookie cleared)
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+
+  /auth/csrf:
+    post:
+      summary: Refresh CSRF token
+      operationId: refreshCsrf
+      tags: [auth]
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: New CSRF token
+          headers:
+            X-CSRF-Token:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/oauth/{provider}:
+    parameters:
+      - $ref: '#/components/parameters/OAuthProviderParam'
+    get:
+      summary: Initiate OAuth flow
+      operationId: oauthInitiate
+      tags: [oauth]
+      responses:
+        '302':
+          description: Redirect to OAuth provider authorize URL
+          headers:
+            Location:
+              schema:
+                type: string
+            Set-Cookie:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+
+  /auth/oauth/{provider}/callback:
+    parameters:
+      - $ref: '#/components/parameters/OAuthProviderParam'
+    get:
+      summary: OAuth callback
+      operationId: oauthCallback
+      tags: [oauth]
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Login success — redirect to /
+          headers:
+            Location:
+              schema:
+                type: string
+            Set-Cookie:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: PAT
+      description: Personal Access Token формата `jtpat_<8>_<24>`
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: jtpost_session
+
+  parameters:
+    PostIdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+        x-go-type: uuid.UUID
+        x-go-type-import:
+          path: github.com/google/uuid
+    OAuthProviderParam:
+      name: provider
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [github]
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    MethodNotAllowed:
+      description: Method not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    PostStatus:
+      type: string
+      enum: [idea, draft, ready, scheduled, published, archived, failed]
+      description: Lifecycle статус поста
+
+    Role:
+      type: string
+      enum: [owner, editor, author, viewer]
+      description: RBAC-роль пользователя
+
+    AttachmentType:
+      type: string
+      enum: [photo, video, document, audio]
+
+    Attachment:
+      type: object
+      required: [id, type]
+      properties:
+        id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        type:
+          $ref: '#/components/schemas/AttachmentType'
+        path:
+          type: string
+        url:
+          type: string
+        caption:
+          type: string
+        mime_type:
+          type: string
+        size:
+          type: integer
+          format: int64
+
+    PublishAttempt:
+      type: object
+      required: [id, at, target, status, retry_attempt, duration]
+      properties:
+        id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        at:
+          type: string
+          format: date-time
+        target:
+          type: string
+        status:
+          type: string
+        message_id:
+          type: string
+        response_payload:
+          type: string
+          description: Сырой JSON-ответ внешней платформы (опционально)
+        error:
+          type: string
+        retry_attempt:
+          type: integer
+        duration:
+          type: integer
+          format: int64
+          description: Длительность попытки в наносекундах (Go time.Duration)
+
+    ExternalLinks:
+      type: object
+      properties:
+        telegram_url:
+          type: string
+
+    Post:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - author_id
+        - title
+        - slug
+        - status
+        - created_at
+        - updated_at
+        - revision
+        - content
+        - external
+      properties:
+        id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        tenant_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        author_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: '#/components/schemas/PostStatus'
+        tags:
+          type: array
+          items:
+            type: string
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        excerpt:
+          type: string
+          nullable: true
+        cover_image:
+          allOf:
+            - $ref: '#/components/schemas/Attachment'
+          nullable: true
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        publish_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublishAttempt'
+        revision:
+          type: integer
+        revision_sha:
+          type: string
+          nullable: true
+        content:
+          type: string
+        external:
+          $ref: '#/components/schemas/ExternalLinks'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreatePostRequest:
+      type: object
+      required: [title]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        author_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        title:
+          type: string
+        slug:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        excerpt:
+          type: string
+          nullable: true
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        content:
+          type: string
+          nullable: true
+
+    UpdatePostRequest:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        title:
+          type: string
+        status:
+          $ref: '#/components/schemas/PostStatus'
+        tags:
+          type: array
+          items:
+            type: string
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+        scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+        content:
+          type: string
+        excerpt:
+          type: string
+          nullable: true
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      required: [csrf_token, user_id, role, expires_at]
+      properties:
+        csrf_token:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        role:
+          $ref: '#/components/schemas/Role'
+        expires_at:
+          type: string
+          format: date-time
+
+    CsrfResponse:
+      type: object
+      required: [csrf_token]
+      properties:
+        csrf_token:
+          type: string
+
+    Stats:
+      type: object
+      description: |
+        Карта `status -> count` (например `{"idea": 3, "draft": 1, ...}`).
+        Возвращается напрямую из core.PostService.GetStats.
+      additionalProperties:
+        type: integer
+
+    PlanItem:
+      type: object
+      required: [id, title, slug, status, date, date_type]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: '#/components/schemas/PostStatus'
+        date:
+          type: string
+          format: date-time
+        date_type:
+          type: string
+          enum: [schedule, deadline]
+
+    TagsResponse:
+      type: object
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          items:
+            type: string
+
+    OAuthCallbackQuery:
+      type: object
+      required: [code, state]
+      properties:
+        code:
+          type: string
+        state:
+          type: string
+
+    PostFilter:
+      type: object
+      description: |
+        Реплика core.PostFilter — для документирования query-params /posts.
+        Не используется напрямую в request body.
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        author_id:
+          type: string
+          format: uuid
+          nullable: true
+          x-go-type: uuid.UUID
+          x-go-type-import:
+            path: github.com/google/uuid
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostStatus'
+        tags:
+          type: array
+          items:
+            type: string
+        search:
+          type: string
+        sort_by:
+          type: string
+          enum: [created_at, updated_at, deadline, scheduled_at, title, status]
+        sort_order:
+          type: string
+          enum: [asc, desc]
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        details:
+          type: string

@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jtprogru/jtpost/internal/adapters/config"
+	"github.com/jtprogru/jtpost/internal/adapters/httpapi/oapigen"
 	"github.com/jtprogru/jtpost/internal/adapters/sqlite"
 	"github.com/jtprogru/jtpost/internal/core"
 )
@@ -48,7 +49,7 @@ func setupHandler(t *testing.T) (*core.AuthService, *config.Config, *core.User) 
 
 func TestLoginHandler_Success(t *testing.T) {
 	svc, cfg, _ := setupHandler(t)
-	body, _ := json.Marshal(LoginRequest{Email: "owner@example.com", Password: "password123"})
+	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	LoginHandler(svc, cfg)(rec, req)
@@ -76,18 +77,18 @@ func TestLoginHandler_Success(t *testing.T) {
 	if !strings.HasPrefix(sessionCookie.Value, "jts_") {
 		t.Errorf("cookie value = %q, want jts_*", sessionCookie.Value)
 	}
-	var resp LoginResponse
+	var resp oapigen.LoginResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.CSRFToken == "" || resp.UserID == "" || resp.Role == "" {
+	if resp.CsrfToken == "" || resp.UserId == uuid.Nil || resp.Role == "" {
 		t.Errorf("response incomplete: %+v", resp)
 	}
 }
 
 func TestLoginHandler_WrongPassword(t *testing.T) {
 	svc, cfg, _ := setupHandler(t)
-	body, _ := json.Marshal(LoginRequest{Email: "owner@example.com", Password: "wrong"})
+	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "wrong"})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	LoginHandler(svc, cfg)(rec, req)
@@ -126,13 +127,13 @@ func TestCSRFHandler_NoSession_401(t *testing.T) {
 func TestCSRFHandler_WithSession_NewCSRF(t *testing.T) {
 	svc, cfg, _ := setupHandler(t)
 	// Login → получить session
-	body, _ := json.Marshal(LoginRequest{Email: "owner@example.com", Password: "password123"})
+	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	loginRec := httptest.NewRecorder()
 	LoginHandler(svc, cfg)(loginRec, loginReq)
-	var loginResp LoginResponse
+	var loginResp oapigen.LoginResponse
 	_ = json.Unmarshal(loginRec.Body.Bytes(), &loginResp)
-	oldCSRF := loginResp.CSRFToken
+	oldCSRF := loginResp.CsrfToken
 
 	// Найти cookie
 	var sessCookie *http.Cookie
@@ -166,7 +167,7 @@ func TestE2E_LoginThenAuthenticated_GET(t *testing.T) {
 	svc, cfg, _ := setupHandler(t)
 
 	// Login
-	body, _ := json.Marshal(LoginRequest{Email: "owner@example.com", Password: "password123"})
+	body, _ := json.Marshal(oapigen.LoginRequest{Email: "owner@example.com", Password: "password123"})
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(body))
 	loginRec := httptest.NewRecorder()
 	LoginHandler(svc, cfg)(loginRec, loginReq)

@@ -8,22 +8,12 @@ import (
 	"time"
 
 	"github.com/jtprogru/jtpost/internal/adapters/config"
+	"github.com/jtprogru/jtpost/internal/adapters/httpapi/oapigen"
 	"github.com/jtprogru/jtpost/internal/core"
 )
 
-// LoginRequest — JSON body для POST /api/auth/login.
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-// LoginResponse — JSON body ответа.
-type LoginResponse struct {
-	CSRFToken string `json:"csrf_token"`
-	UserID    string `json:"user_id"`
-	Role      string `json:"role"`
-	ExpiresAt string `json:"expires_at"`
-}
+// LoginRequest и LoginResponse объявлены в `oapigen` (generated из
+// api/openapi.yaml). См. internal/adapters/httpapi/oapigen/types.gen.go.
 
 // LoginHandler handles POST /api/auth/login.
 func LoginHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
@@ -32,7 +22,7 @@ func LoginHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		var req LoginRequest
+		var req oapigen.LoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid_body")
 			return
@@ -49,7 +39,7 @@ func LoginHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
 		}
 		res, err := svc.Login(r.Context(), core.LoginInput{
 			TenantID: cfg.Auth.TenantDefault,
-			Email:    req.Email,
+			Email:    string(req.Email),
 			Password: req.Password,
 		}, ttl)
 		if err != nil {
@@ -63,11 +53,11 @@ func LoginHandler(svc *core.AuthService, cfg *config.Config) http.HandlerFunc {
 		setSessionCookie(w, cfg, res.RawToken, res.Session.ExpiresAt)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(LoginResponse{
-			CSRFToken: res.CSRFToken,
-			UserID:    res.User.ID.String(),
-			Role:      string(res.User.Role),
-			ExpiresAt: res.Session.ExpiresAt.UTC().Format(time.RFC3339),
+		_ = json.NewEncoder(w).Encode(oapigen.LoginResponse{
+			CsrfToken: res.CSRFToken,
+			UserId:    res.User.ID,
+			Role:      oapigen.Role(res.User.Role),
+			ExpiresAt: res.Session.ExpiresAt.UTC(),
 		})
 	}
 }

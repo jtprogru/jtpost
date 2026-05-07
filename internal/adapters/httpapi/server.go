@@ -88,22 +88,36 @@ func (s *Server) apply(h http.HandlerFunc) http.Handler {
 }
 
 // registerRoutes регистрирует HTTP обработчики.
+// Все API-routes регистрируются под двумя префиксами: legacy `/api/` и новый
+// `/api/v1/` (F5). Aliases ведут на тот же handler — backward-compat.
 func (s *Server) registerRoutes() {
-	s.mux.Handle("/api/posts", s.apply(s.handlePosts))
-	s.mux.Handle("/api/posts/", s.apply(s.handlePostByID))
-	s.mux.Handle("/api/stats", s.apply(s.handleStats))
-	s.mux.Handle("/api/plan", s.apply(s.handlePlan))
-	s.mux.Handle("/api/tags", s.apply(s.handleTags))
+	s.bothPrefixes("/api/posts", s.apply(s.handlePosts))
+	s.bothPrefixes("/api/posts/", s.apply(s.handlePostByID))
+	s.bothPrefixes("/api/stats", s.apply(s.handleStats))
+	s.bothPrefixes("/api/plan", s.apply(s.handlePlan))
+	s.bothPrefixes("/api/tags", s.apply(s.handleTags))
 	if s.authSvc != nil && s.cfg != nil {
-		s.mux.HandleFunc("/api/auth/login", LoginHandler(s.authSvc, s.cfg))
-		s.mux.HandleFunc("/api/auth/logout", LogoutHandler(s.authSvc, s.cfg))
-		s.mux.HandleFunc("/api/auth/csrf", CSRFHandler(s.authSvc))
+		s.bothPrefixesFunc("/api/auth/login", LoginHandler(s.authSvc, s.cfg))
+		s.bothPrefixesFunc("/api/auth/logout", LogoutHandler(s.authSvc, s.cfg))
+		s.bothPrefixesFunc("/api/auth/csrf", CSRFHandler(s.authSvc))
 	}
 	if s.oauthSvc != nil && s.authSvc != nil && s.cfg != nil {
 		oauthHandler := NewOAuthHandler(s.oauthSvc, s.authSvc, s.cfg)
-		s.mux.Handle("/api/auth/oauth/", oauthHandler)
+		s.bothPrefixes("/api/auth/oauth/", oauthHandler)
 	}
 	s.mux.HandleFunc("/", s.handleIndex)
+}
+
+// bothPrefixes регистрирует handler под legacy `/api/...` и новым
+// `/api/v1/...` префиксами (F5).
+func (s *Server) bothPrefixes(legacyPath string, h http.Handler) {
+	s.mux.Handle(legacyPath, h)
+	v1Path := "/api/v1" + strings.TrimPrefix(legacyPath, "/api")
+	s.mux.Handle(v1Path, h)
+}
+
+func (s *Server) bothPrefixesFunc(legacyPath string, h http.HandlerFunc) {
+	s.bothPrefixes(legacyPath, h)
 }
 
 // writeJSONError возвращает ошибку в JSON виде с заданным кодом.
