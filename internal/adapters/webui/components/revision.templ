@@ -4,15 +4,46 @@ import (
 	"github.com/jtprogru/jtpost/internal/core"
 )
 
+// DiffOp дублируется здесь, чтобы избежать импорта пакета webui (cycle).
+// Значения должны совпадать с webui.DiffOp{Equal,Removed,Added}.
+type DiffOp int
+
+const (
+	// DiffEqual строка совпадает.
+	DiffEqual DiffOp = iota
+	// DiffRemoved строка только в старой ревизии.
+	DiffRemoved
+	// DiffAdded строка только в текущей версии.
+	DiffAdded
+)
+
+// DiffRow — одна строка side-by-side таблицы.
+type DiffRow struct {
+	Op    DiffOp
+	Left  string
+	Right string
+}
+
 // RevisionProps — данные для страницы просмотра ревизии файла поста.
 type RevisionProps struct {
 	Post       *core.Post
 	Hash       string // user-provided (может быть короткий)
 	ShortHash  string // 8 символов
-	Content    string // raw содержимое файла на ревизии
+	Diff       []DiffRow
 	UserEmail  string
 	NotFound   bool   // true → ревизия не найдена
 	ErrMessage string // сообщение об ошибке (внутреннее, не not-found)
+}
+
+func diffRowClass(op DiffOp) string {
+	switch op {
+	case DiffAdded:
+		return "revision-diff__row revision-diff__row--added"
+	case DiffRemoved:
+		return "revision-diff__row revision-diff__row--removed"
+	default:
+		return "revision-diff__row"
+	}
 }
 
 templ Revision(p RevisionProps) {
@@ -29,7 +60,22 @@ templ Revision(p RevisionProps) {
 		} else if p.ErrMessage != "" {
 			<div class="form-error">{ p.ErrMessage }</div>
 		} else {
-			<pre class="md-preview revision-content">{ p.Content }</pre>
+			<div class="revision-diff">
+				<div class="revision-diff__head">
+					<div class="revision-diff__col-head">Ревизия { p.ShortHash }</div>
+					<div class="revision-diff__col-head">Текущая версия</div>
+				</div>
+				<table class="revision-diff__table">
+					<tbody>
+						for _, row := range p.Diff {
+							<tr class={ diffRowClass(row.Op) }>
+								<td class="revision-diff__cell revision-diff__cell--left">{ row.Left }</td>
+								<td class="revision-diff__cell revision-diff__cell--right">{ row.Right }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
 			<form
 				method="post"
 				action={ templ.URL("/ui/posts/" + p.Post.ID.String() + "/history/" + p.Hash + "/revert") }

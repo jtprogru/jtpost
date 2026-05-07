@@ -84,7 +84,7 @@ func (h *Handler) handlePostRevision(w http.ResponseWriter, r *http.Request, id 
 	body, ferr := h.history.FileAtCommit(r.Context(), post, hash)
 	switch {
 	case ferr == nil:
-		props.Content = string(body)
+		props.Diff = buildRevisionDiff(body, post.Content)
 	case errors.Is(ferr, core.ErrNotFound):
 		props.NotFound = true
 	default:
@@ -160,6 +160,34 @@ func (h *Handler) handlePostRevert(w http.ResponseWriter, r *http.Request, id co
 	}
 	h.publish("post.updated", map[string]any{"id": id.String(), "status": string(post.Status)})
 	http.Redirect(w, r, "/ui/posts/"+id.String()+"?reverted=1", http.StatusSeeOther)
+}
+
+// buildRevisionDiff извлекает body из raw-файла ревизии и считает построчный
+// diff с текущим post.Content. Если frontmatter не парсится — diff'ит весь
+// raw как fallback.
+func buildRevisionDiff(rawRevision []byte, currentBody string) []components.DiffRow {
+	revBody := extractBody(rawRevision)
+	rows := DiffLines(revBody, currentBody)
+	out := make([]components.DiffRow, len(rows))
+	for i, r := range rows {
+		out[i] = components.DiffRow{
+			Op:    components.DiffOp(r.Op),
+			Left:  r.Left,
+			Right: r.Right,
+		}
+	}
+	return out
+}
+
+// extractBody вырезает body из markdown-файла с YAML-frontmatter. Если
+// frontmatter отсутствует или невалидный — возвращает весь raw как есть.
+func extractBody(data []byte) string {
+	trimmed := bytes.TrimPrefix(data, []byte("---\n"))
+	parts := bytes.SplitN(trimmed, []byte("\n---\n"), 2)
+	if len(parts) < 2 {
+		return string(data)
+	}
+	return strings.TrimSpace(string(parts[1]))
 }
 
 // parseRevertSnapshot извлекает Title/Content/Tags из raw bytes ревизионного

@@ -224,6 +224,7 @@
 - 🔴 Разрешение конфликтов слияния (rebase/merge стратегии)
 - ✅ История изменений постов через UI (`/ui/posts/{id}/history`)
 - ✅ Откат к предыдущим версиям (`POST /ui/posts/{id}/history/{hash}/revert`, revert title/content/tags)
+- ✅ Side-by-side diff на revision-page (LCS, frontmatter скрыт)
 
 **Конфигурация:**
 ```yaml

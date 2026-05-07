@@ -521,3 +521,15 @@ textarea.drop-active {
 }
 .audit-outcome--success { color: var(--success); border-color: var(--success); }
 .audit-outcome--failure { color: var(--danger); border-color: var(--danger); }
+
+/* Revision diff (side-by-side) */
+.revision-diff { margin-top: 1rem; border: 1px solid var(--border); border-radius: 0.4rem; overflow: hidden; }
+.revision-diff__head { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg-alt); border-bottom: 1px solid var(--border); }
+.revision-diff__col-head { padding: 0.5rem 0.75rem; font-size: 0.85rem; font-weight: 600; }
+.revision-diff__col-head + .revision-diff__col-head { border-left: 1px solid var(--border); }
+.revision-diff__table { width: 100%; border-collapse: collapse; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.82rem; }
+.revision-diff__cell { padding: 0.15rem 0.6rem; vertical-align: top; white-space: pre-wrap; word-break: break-word; width: 50%; }
+.revision-diff__cell--right { border-left: 1px solid var(--border); }
+.revision-diff__row--removed .revision-diff__cell--left { background: rgba(220, 53, 69, 0.12); }
+.revision-diff__row--added .revision-diff__cell--right { background: rgba(40, 167, 69, 0.14); }
+.post-edit__revert-form { margin-top: 1rem; }

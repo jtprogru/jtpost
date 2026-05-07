@@ -12,15 +12,46 @@ import (
 	"github.com/jtprogru/jtpost/internal/core"
 )
 
+// DiffOp дублируется здесь, чтобы избежать импорта пакета webui (cycle).
+// Значения должны совпадать с webui.DiffOp{Equal,Removed,Added}.
+type DiffOp int
+
+const (
+	// DiffEqual строка совпадает.
+	DiffEqual DiffOp = iota
+	// DiffRemoved строка только в старой ревизии.
+	DiffRemoved
+	// DiffAdded строка только в текущей версии.
+	DiffAdded
+)
+
+// DiffRow — одна строка side-by-side таблицы.
+type DiffRow struct {
+	Op    DiffOp
+	Left  string
+	Right string
+}
+
 // RevisionProps — данные для страницы просмотра ревизии файла поста.
 type RevisionProps struct {
 	Post       *core.Post
 	Hash       string // user-provided (может быть короткий)
 	ShortHash  string // 8 символов
-	Content    string // raw содержимое файла на ревизии
+	Diff       []DiffRow
 	UserEmail  string
 	NotFound   bool   // true → ревизия не найдена
 	ErrMessage string // сообщение об ошибке (внутреннее, не not-found)
+}
+
+func diffRowClass(op DiffOp) string {
+	switch op {
+	case DiffAdded:
+		return "revision-diff__row revision-diff__row--added"
+	case DiffRemoved:
+		return "revision-diff__row revision-diff__row--removed"
+	default:
+		return "revision-diff__row"
+	}
 }
 
 func Revision(p RevisionProps) templ.Component {
@@ -63,7 +94,7 @@ func Revision(p RevisionProps) templ.Component {
 			var templ_7745c5c3_Var3 templ.SafeURL
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/ui/posts/" + p.Post.ID.String() + "/history"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 21, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 52, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -76,7 +107,7 @@ func Revision(p RevisionProps) templ.Component {
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(p.ShortHash)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 22, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 53, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -89,7 +120,7 @@ func Revision(p RevisionProps) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(p.Post.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 24, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 55, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -112,7 +143,7 @@ func Revision(p RevisionProps) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(p.ErrMessage)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 30, Col: 41}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 61, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -123,33 +154,87 @@ func Revision(p RevisionProps) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<pre class=\"md-preview revision-content\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"revision-diff\"><div class=\"revision-diff__head\"><div class=\"revision-diff__col-head\">Ревизия ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var7 string
-				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(p.Content)
+				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(p.ShortHash)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 32, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 65, Col: 70}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</pre><form method=\"post\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div><div class=\"revision-diff__col-head\">Текущая версия</div></div><table class=\"revision-diff__table\"><tbody>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var8 templ.SafeURL
-				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/ui/posts/" + p.Post.ID.String() + "/history/" + p.Hash + "/revert"))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 35, Col: 92}
+				for _, row := range p.Diff {
+					var templ_7745c5c3_Var8 = []any{diffRowClass(row.Op)}
+					templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var8...)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<tr class=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var9 string
+					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var8).String())
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 1, Col: 0}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\"><td class=\"revision-diff__cell revision-diff__cell--left\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var10 string
+					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(row.Left)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 72, Col: 76}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</td><td class=\"revision-diff__cell revision-diff__cell--right\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var11 string
+					templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(row.Right)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 73, Col: 78}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</td></tr>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</tbody></table></div><form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" onsubmit=\"return confirm('Вернуть пост к этой ревизии? Текущие title/content/tags будут перезаписаны.');\" class=\"post-edit__revert-form\"><button type=\"submit\" class=\"btn btn--danger\">Вернуть к этой версии</button></form>")
+				var templ_7745c5c3_Var12 templ.SafeURL
+				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/ui/posts/" + p.Post.ID.String() + "/history/" + p.Hash + "/revert"))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/adapters/webui/components/revision.templ`, Line: 81, Col: 92}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" onsubmit=\"return confirm('Вернуть пост к этой ревизии? Текущие title/content/tags будут перезаписаны.');\" class=\"post-edit__revert-form\"><button type=\"submit\" class=\"btn btn--danger\">Вернуть к этой версии</button></form>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

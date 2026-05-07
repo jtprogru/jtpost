@@ -98,10 +98,11 @@ func TestUI_PostHistory_NotFound(t *testing.T) {
 	}
 }
 
-func TestUI_PostRevision_RendersContent(t *testing.T) {
+func TestUI_PostRevision_RendersDiff(t *testing.T) {
 	t.Parallel()
 	post := samplePost("Cat", core.StatusReady)
-	hp := &stubHistory{fileBody: []byte("---\ntitle: Old\n---\n\nold content")}
+	post.Content = "current body line"
+	hp := &stubHistory{fileBody: []byte("---\ntitle: Old\n---\n\nold body line")}
 	h := newHistoryHandler(t, hp, post)
 	req := httptest.NewRequest(http.MethodGet, "/ui/posts/"+post.ID.String()+"/history/abc12345def", nil)
 	rec := httptest.NewRecorder()
@@ -110,10 +111,14 @@ func TestUI_PostRevision_RendersContent(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"abc12345", "old content", "Old", "title:"} {
+	for _, want := range []string{"abc12345", "old body line", "current body line", "revision-diff", "revision-diff__row--removed", "revision-diff__row--added"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}
+	}
+	// Frontmatter не должен попасть в diff.
+	if strings.Contains(body, "title: Old") {
+		t.Error("frontmatter must not appear in diff view")
 	}
 }
 
