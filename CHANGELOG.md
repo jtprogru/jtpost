@@ -7,6 +7,16 @@
 
 ## [Неопубликовано]
 
+### B.5b: HTTP API endpoint `POST /posts/{id}/queue` (closes B.5)
+
+**Добавлено:**
+- **`POST /api/posts/{id}/queue`** — кладёт пост в outbox-очередь, возвращает 202 Accepted с entry_id, post_id, status, next_attempt_at. 404 если поста нет, 503 если outbox не сконфигурирован.
+- **OpenAPI spec**: `queuePost` operation + `OutboxEntry` schema. Codegen (types + client) обновлён.
+- **`Server.Outbox`** field + `ServerConfig.Outbox`. Wired в `serve.go` через `bundle.Outbox`.
+
+**Тесты:**
+- 3 теста (queue_test.go): success/202+entry persisted, 404 для несуществующего поста, 503 без outbox.
+
 ### B.5: Worker (publisher outbox pattern)
 
 **Добавлено:**

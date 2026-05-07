@@ -90,6 +90,7 @@ var serveCmd = &cobra.Command{
 			Publisher:    publisher,
 			AuthService:  authSvc,
 			OAuthService: oauthSvc,
+			Outbox:       bundle.Outbox,
 			Logger:       log,
 			Config:       cfg,
 		}

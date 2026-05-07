@@ -203,6 +203,34 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /posts/{id}/queue:
+    parameters:
+      - $ref: '#/components/parameters/PostIdParam'
+    post:
+      summary: Enqueue post for async publication
+      description: Кладёт пост в outbox-очередь. Worker обработает запись асинхронно.
+      operationId: queuePost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        '202':
+          description: Outbox entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Outbox not configured
+          content:
+            text/plain:
+              schema: {type: string}
+
   /stats:
     get:
       summary: Get statistics
@@ -547,6 +575,23 @@ components:
       properties:
         telegram_url:
           type: string
+
+    OutboxEntry:
+      type: object
+      required: [entry_id, post_id, status, next_attempt_at]
+      properties:
+        entry_id:
+          type: string
+          format: uuid
+        post_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, in_flight, done, failed]
+        next_attempt_at:
+          type: string
+          format: date-time
 
     Post:
       type: object

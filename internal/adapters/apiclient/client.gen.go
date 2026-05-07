@@ -48,6 +48,30 @@ func (e AttachmentType) Valid() bool {
 	}
 }
 
+// Defines values for OutboxEntryStatus.
+const (
+	OutboxEntryStatusDone     OutboxEntryStatus = "done"
+	OutboxEntryStatusFailed   OutboxEntryStatus = "failed"
+	OutboxEntryStatusInFlight OutboxEntryStatus = "in_flight"
+	OutboxEntryStatusPending  OutboxEntryStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the OutboxEntryStatus enum.
+func (e OutboxEntryStatus) Valid() bool {
+	switch e {
+	case OutboxEntryStatusDone:
+		return true
+	case OutboxEntryStatusFailed:
+		return true
+	case OutboxEntryStatusInFlight:
+		return true
+	case OutboxEntryStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlanItemDateType.
 const (
 	PlanItemDateTypeDeadline PlanItemDateType = "deadline"
@@ -116,31 +140,31 @@ func (e PostFilterSortOrder) Valid() bool {
 
 // Defines values for PostStatus.
 const (
-	Archived  PostStatus = "archived"
-	Draft     PostStatus = "draft"
-	Failed    PostStatus = "failed"
-	Idea      PostStatus = "idea"
-	Published PostStatus = "published"
-	Ready     PostStatus = "ready"
-	Scheduled PostStatus = "scheduled"
+	PostStatusArchived  PostStatus = "archived"
+	PostStatusDraft     PostStatus = "draft"
+	PostStatusFailed    PostStatus = "failed"
+	PostStatusIdea      PostStatus = "idea"
+	PostStatusPublished PostStatus = "published"
+	PostStatusReady     PostStatus = "ready"
+	PostStatusScheduled PostStatus = "scheduled"
 )
 
 // Valid indicates whether the value is a known member of the PostStatus enum.
 func (e PostStatus) Valid() bool {
 	switch e {
-	case Archived:
+	case PostStatusArchived:
 		return true
-	case Draft:
+	case PostStatusDraft:
 		return true
-	case Failed:
+	case PostStatusFailed:
 		return true
-	case Idea:
+	case PostStatusIdea:
 		return true
-	case Published:
+	case PostStatusPublished:
 		return true
-	case Ready:
+	case PostStatusReady:
 		return true
-	case Scheduled:
+	case PostStatusScheduled:
 		return true
 	default:
 		return false
@@ -297,6 +321,17 @@ type OAuthCallbackQuery struct {
 	Code  string `json:"code"`
 	State string `json:"state"`
 }
+
+// OutboxEntry defines model for OutboxEntry.
+type OutboxEntry struct {
+	EntryId       openapi_types.UUID `json:"entry_id"`
+	NextAttemptAt time.Time          `json:"next_attempt_at"`
+	PostId        openapi_types.UUID `json:"post_id"`
+	Status        OutboxEntryStatus  `json:"status"`
+}
+
+// OutboxEntryStatus defines model for OutboxEntry.Status.
+type OutboxEntryStatus string
 
 // PlanItem defines model for PlanItem.
 type PlanItem struct {
@@ -593,6 +628,9 @@ type ClientInterface interface {
 	// PublishPost request
 	PublishPost(ctx context.Context, id PostIdParam, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// QueuePost request
+	QueuePost(ctx context.Context, id PostIdParam, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetStats request
 	GetStats(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -782,6 +820,18 @@ func (c *Client) UpdatePost(ctx context.Context, id PostIdParam, body UpdatePost
 
 func (c *Client) PublishPost(ctx context.Context, id PostIdParam, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPublishPostRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) QueuePost(ctx context.Context, id PostIdParam, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueuePostRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -1405,6 +1455,40 @@ func NewPublishPostRequest(server string, id PostIdParam) (*http.Request, error)
 	return req, nil
 }
 
+// NewQueuePostRequest generates requests for QueuePost
+func NewQueuePostRequest(server string, id PostIdParam) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/posts/%s/queue", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetStatsRequest generates requests for GetStats
 func NewGetStatsRequest(server string) (*http.Request, error) {
 	var err error
@@ -1546,6 +1630,9 @@ type ClientWithResponsesInterface interface {
 
 	// PublishPostWithResponse request
 	PublishPostWithResponse(ctx context.Context, id PostIdParam, reqEditors ...RequestEditorFn) (*PublishPostResponse, error)
+
+	// QueuePostWithResponse request
+	QueuePostWithResponse(ctx context.Context, id PostIdParam, reqEditors ...RequestEditorFn) (*QueuePostResponse, error)
 
 	// GetStatsWithResponse request
 	GetStatsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetStatsResponse, error)
@@ -1967,6 +2054,38 @@ func (r PublishPostResponse) ContentType() string {
 	return ""
 }
 
+type QueuePostResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *OutboxEntry
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r QueuePostResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r QueuePostResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r QueuePostResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetStatsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -2168,6 +2287,15 @@ func (c *ClientWithResponses) PublishPostWithResponse(ctx context.Context, id Po
 		return nil, err
 	}
 	return ParsePublishPostResponse(rsp)
+}
+
+// QueuePostWithResponse request returning *QueuePostResponse
+func (c *ClientWithResponses) QueuePostWithResponse(ctx context.Context, id PostIdParam, reqEditors ...RequestEditorFn) (*QueuePostResponse, error) {
+	rsp, err := c.QueuePost(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQueuePostResponse(rsp)
 }
 
 // GetStatsWithResponse request returning *GetStatsResponse
@@ -2664,6 +2792,46 @@ func ParsePublishPostResponse(rsp *http.Response) (*PublishPostResponse, error) 
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseQueuePostResponse parses an HTTP response from a QueuePostWithResponse call
+func ParseQueuePostResponse(rsp *http.Response) (*QueuePostResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &QueuePostResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest OutboxEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized

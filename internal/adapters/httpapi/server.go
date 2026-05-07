@@ -24,6 +24,7 @@ type Server struct {
 	publisher core.Publisher
 	authSvc   *core.AuthService  // nil if auth.type != token
 	oauthSvc  *core.OAuthService // nil if no providers configured
+	outbox    core.OutboxRepository
 	mux       *http.ServeMux
 	log       *logger.Logger
 	cfg       *config.Config
@@ -35,6 +36,7 @@ type ServerConfig struct {
 	Publisher    core.Publisher
 	AuthService  *core.AuthService
 	OAuthService *core.OAuthService
+	Outbox       core.OutboxRepository
 	Logger       *logger.Logger
 	Config       *config.Config
 }
@@ -60,6 +62,7 @@ func NewServerWithConfig(cfg ServerConfig) *Server {
 		publisher: cfg.Publisher,
 		authSvc:   cfg.AuthService,
 		oauthSvc:  cfg.OAuthService,
+		outbox:    cfg.Outbox,
 		mux:       http.NewServeMux(),
 		log:       log,
 		cfg:       cfg.Config,
@@ -358,6 +361,15 @@ func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.publishPost(w, r, parsedID)
+		return
+	}
+	if queueID, ok := strings.CutSuffix(path, "/queue"); ok {
+		parsedID, err := core.ParsePostID(queueID)
+		if err != nil {
+			http.Error(w, "Invalid post ID format", http.StatusBadRequest)
+			return
+		}
+		s.queuePost(w, r, parsedID)
 		return
 	}
 
@@ -705,6 +717,43 @@ func (s *Server) publishPost(w http.ResponseWriter, r *http.Request, id core.Pos
 	s.log.Info("PublishPost success id=%s", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
+}
+
+// queuePost обрабатывает POST /api/posts/{id}/queue — кладёт пост в outbox.
+func (s *Server) queuePost(w http.ResponseWriter, r *http.Request, id core.PostID) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.outbox == nil {
+		http.Error(w, "outbox not configured", http.StatusServiceUnavailable)
+		return
+	}
+	ctx := r.Context()
+	post, err := s.service.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, core.ErrNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	entry, err := core.EnqueueForPublish(ctx, s.outbox, post, time.Time{})
+	if err != nil {
+		s.log.Error("queuePost enqueue: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.log.Info("queuePost success post=%s entry=%s", id, entry.ID)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"entry_id":        entry.ID,
+		"post_id":         entry.PostID,
+		"status":          entry.Status,
+		"next_attempt_at": entry.NextAttemptAt,
+	})
 }
 
 // jsonPlannedPost JSON-представление запланированного поста.

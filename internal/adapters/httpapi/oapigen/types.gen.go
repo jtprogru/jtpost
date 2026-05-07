@@ -39,6 +39,30 @@ func (e AttachmentType) Valid() bool {
 	}
 }
 
+// Defines values for OutboxEntryStatus.
+const (
+	OutboxEntryStatusDone     OutboxEntryStatus = "done"
+	OutboxEntryStatusFailed   OutboxEntryStatus = "failed"
+	OutboxEntryStatusInFlight OutboxEntryStatus = "in_flight"
+	OutboxEntryStatusPending  OutboxEntryStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the OutboxEntryStatus enum.
+func (e OutboxEntryStatus) Valid() bool {
+	switch e {
+	case OutboxEntryStatusDone:
+		return true
+	case OutboxEntryStatusFailed:
+		return true
+	case OutboxEntryStatusInFlight:
+		return true
+	case OutboxEntryStatusPending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PlanItemDateType.
 const (
 	PlanItemDateTypeDeadline PlanItemDateType = "deadline"
@@ -107,31 +131,31 @@ func (e PostFilterSortOrder) Valid() bool {
 
 // Defines values for PostStatus.
 const (
-	Archived  PostStatus = "archived"
-	Draft     PostStatus = "draft"
-	Failed    PostStatus = "failed"
-	Idea      PostStatus = "idea"
-	Published PostStatus = "published"
-	Ready     PostStatus = "ready"
-	Scheduled PostStatus = "scheduled"
+	PostStatusArchived  PostStatus = "archived"
+	PostStatusDraft     PostStatus = "draft"
+	PostStatusFailed    PostStatus = "failed"
+	PostStatusIdea      PostStatus = "idea"
+	PostStatusPublished PostStatus = "published"
+	PostStatusReady     PostStatus = "ready"
+	PostStatusScheduled PostStatus = "scheduled"
 )
 
 // Valid indicates whether the value is a known member of the PostStatus enum.
 func (e PostStatus) Valid() bool {
 	switch e {
-	case Archived:
+	case PostStatusArchived:
 		return true
-	case Draft:
+	case PostStatusDraft:
 		return true
-	case Failed:
+	case PostStatusFailed:
 		return true
-	case Idea:
+	case PostStatusIdea:
 		return true
-	case Published:
+	case PostStatusPublished:
 		return true
-	case Ready:
+	case PostStatusReady:
 		return true
-	case Scheduled:
+	case PostStatusScheduled:
 		return true
 	default:
 		return false
@@ -288,6 +312,17 @@ type OAuthCallbackQuery struct {
 	Code  string `json:"code"`
 	State string `json:"state"`
 }
+
+// OutboxEntry defines model for OutboxEntry.
+type OutboxEntry struct {
+	EntryId       openapi_types.UUID `json:"entry_id"`
+	NextAttemptAt time.Time          `json:"next_attempt_at"`
+	PostId        openapi_types.UUID `json:"post_id"`
+	Status        OutboxEntryStatus  `json:"status"`
+}
+
+// OutboxEntryStatus defines model for OutboxEntry.Status.
+type OutboxEntryStatus string
 
 // PlanItem defines model for PlanItem.
 type PlanItem struct {
