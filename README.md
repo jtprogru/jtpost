@@ -250,7 +250,6 @@ jtpost list --format json | jq '[.[].tags] | flatten | group_by(.) | map({tag: .
 | `jtpost delete <id>` | Удалить пост |
 | `jtpost import` | Импорт постов из `content/posts/` |
 | `jtpost migrate` | Миграция из FS в SQLite |
-| `jtpost migrate-ids` | Миграция ID постов (timestamp-slug → UUID v7) |
 | `jtpost publish <id>` | Опубликовать в Telegram |
 | `jtpost plan` | Показать план публикаций |
 | `jtpost stats` | Статистика по постам |
