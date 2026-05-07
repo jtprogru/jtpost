@@ -5,8 +5,25 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jtprogru/jtpost/internal/adapters/config"
+	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/jtprogru/jtpost/internal/logger"
 )
+
+// TenantFromConfigMiddleware — middleware-заглушка под F4. Извлекает tenant_default
+// и author_default из конфига и кладёт их в context. Реальный auth — в F4.
+func TenantFromConfigMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			if cfg != nil {
+				ctx = core.WithTenant(ctx, cfg.Auth.TenantDefault)
+				ctx = core.WithAuthor(ctx, cfg.Auth.AuthorDefault)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
 
 // responseWriter обёртка над http.ResponseWriter для перехвата статуса.
 type responseWriter struct {

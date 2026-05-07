@@ -7,8 +7,43 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/jtprogru/jtpost/internal/adapters/config"
+	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/jtprogru/jtpost/internal/logger"
 )
+
+func TestTenantFromConfigMiddleware_PopulatesContext(t *testing.T) {
+	tenant := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	author := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			TenantDefault: tenant,
+			AuthorDefault: author,
+		},
+	}
+
+	var (
+		gotTenant uuid.UUID
+		gotAuthor uuid.UUID
+		okT, okA  bool
+	)
+	handler := TenantFromConfigMiddleware(cfg)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		gotTenant, okT = core.TenantFromContext(r.Context())
+		gotAuthor, okA = core.AuthorFromContext(r.Context())
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !okT || gotTenant != tenant {
+		t.Errorf("expected tenant %s in context, got %s (ok=%v)", tenant, gotTenant, okT)
+	}
+	if !okA || gotAuthor != author {
+		t.Errorf("expected author %s in context, got %s (ok=%v)", author, gotAuthor, okA)
+	}
+}
 
 // testHandler простой обработчик для тестирования.
 func testHandler(statusCode int) http.Handler {

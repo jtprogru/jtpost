@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/jtprogru/jtpost/internal/logger"
 )
@@ -18,10 +20,11 @@ var indexTemplate string
 
 // Server HTTP сервер для API.
 type Server struct {
-	service    *core.PostService
-	publisher  core.Publisher
-	mux        *http.ServeMux
-	log        *logger.Logger
+	service   *core.PostService
+	publisher core.Publisher
+	mux       *http.ServeMux
+	log       *logger.Logger
+	cfg       *config.Config
 }
 
 // ServerConfig конфигурация HTTP сервера.
@@ -29,6 +32,7 @@ type ServerConfig struct {
 	Service   *core.PostService
 	Publisher core.Publisher
 	Logger    *logger.Logger
+	Config    *config.Config
 }
 
 // NewServer создаёт новый HTTP сервер.
@@ -52,6 +56,7 @@ func NewServerWithConfig(cfg ServerConfig) *Server {
 		publisher: cfg.Publisher,
 		mux:       http.NewServeMux(),
 		log:       log,
+		cfg:       cfg.Config,
 	}
 	s.registerRoutes()
 	return s
@@ -67,14 +72,30 @@ func (s *Server) Logger() *logger.Logger {
 	return s.log
 }
 
+// apply оборачивает HandlerFunc в TenantFromConfigMiddleware (если конфиг задан).
+func (s *Server) apply(h http.HandlerFunc) http.Handler {
+	var handler http.Handler = h
+	if s.cfg != nil {
+		handler = TenantFromConfigMiddleware(s.cfg)(handler)
+	}
+	return handler
+}
+
 // registerRoutes регистрирует HTTP обработчики.
 func (s *Server) registerRoutes() {
-	s.mux.HandleFunc("/api/posts", s.handlePosts)
-	s.mux.HandleFunc("/api/posts/", s.handlePostByID)
-	s.mux.HandleFunc("/api/stats", s.handleStats)
-	s.mux.HandleFunc("/api/plan", s.handlePlan)
-	s.mux.HandleFunc("/api/tags", s.handleTags)
+	s.mux.Handle("/api/posts", s.apply(s.handlePosts))
+	s.mux.Handle("/api/posts/", s.apply(s.handlePostByID))
+	s.mux.Handle("/api/stats", s.apply(s.handleStats))
+	s.mux.Handle("/api/plan", s.apply(s.handlePlan))
+	s.mux.Handle("/api/tags", s.apply(s.handleTags))
 	s.mux.HandleFunc("/", s.handleIndex)
+}
+
+// writeJSONError возвращает ошибку в JSON виде с заданным кодом.
+func writeJSONError(w http.ResponseWriter, status int, code string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": code})
 }
 
 // handleIndex обрабатывает запросы на корень.
@@ -84,7 +105,6 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Отдаём HTML страницу из шаблона
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(indexTemplate))
 }
@@ -105,8 +125,10 @@ func (s *Server) handlePosts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Парсим фильтры из query параметров
 	filter := core.PostFilter{}
+	if t, ok := core.TenantFromContext(ctx); ok {
+		filter.TenantID = t
+	}
 
 	statuses := r.URL.Query()["status"]
 	for _, st := range statuses {
@@ -121,8 +143,8 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		filter.Search = search
 	}
 
-	s.log.Debug("ListPosts filter: statuses=%v, tags=%v, search=%s",
-		filter.Statuses, filter.Tags, filter.Search)
+	s.log.Debug("ListPosts filter: tenant=%s, statuses=%v, tags=%v, search=%s",
+		filter.TenantID, filter.Statuses, filter.Tags, filter.Search)
 
 	posts, err := s.service.ListPosts(ctx, filter)
 	if err != nil {
@@ -131,14 +153,24 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Сортировка
+	// Если контекст принёс tenant — фильтруем посты по нему (mock-репозиторий
+	// в тестах может не учитывать filter.TenantID).
+	if filter.TenantID != uuid.Nil {
+		filtered := posts[:0]
+		for _, p := range posts {
+			if p.TenantID == filter.TenantID || p.TenantID == uuid.Nil {
+				filtered = append(filtered, p)
+			}
+		}
+		posts = filtered
+	}
+
 	sortField := r.URL.Query().Get("sort")
 	sortOrder := r.URL.Query().Get("order")
 	if sortField != "" {
 		sortPosts(posts, sortField, sortOrder)
 	}
 
-	// Конвертируем в JSON-совместимый формат
 	jsonPosts := make([]jsonPost, len(posts))
 	for i, post := range posts {
 		jsonPosts[i] = toJSONPost(post)
@@ -187,7 +219,6 @@ func sortPosts(posts []*core.Post, field, order string) {
 		return less
 	}
 
-	// Пузырьковая сортировка
 	for range len(posts) - 1 {
 		for j := range len(posts) - 1 {
 			if !sortFunc(j, j+1) {
@@ -197,33 +228,87 @@ func sortPosts(posts []*core.Post, field, order string) {
 	}
 }
 
+// createPostInput тело POST /api/posts.
+type createPostInput struct {
+	TenantID *string    `json:"tenant_id,omitempty"`
+	AuthorID *string    `json:"author_id,omitempty"`
+	Title    string     `json:"title"`
+	Slug     string     `json:"slug,omitempty"`
+	Tags     []string   `json:"tags,omitempty"`
+	Excerpt  *string    `json:"excerpt,omitempty"`
+	Deadline *time.Time `json:"deadline,omitempty"`
+	Content  *string    `json:"content,omitempty"`
+}
+
 // createPost обрабатывает POST /api/posts.
 func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var input struct {
-		Title string   `json:"title"`
-		Slug  string   `json:"slug,omitempty"`
-		Tags  []string `json:"tags,omitempty"`
+	if r.Body == nil {
+		http.Error(w, "empty body", http.StatusBadRequest)
+		return
 	}
 
+	var input createPostInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		s.log.Warn("CreatePost decode error: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	s.log.Info("CreatePost title=%q, tags=%v", input.Title, input.Tags)
+	ctxTenant, _ := core.TenantFromContext(ctx)
+	ctxAuthor, _ := core.AuthorFromContext(ctx)
+
+	tenantID := ctxTenant
+	if input.TenantID != nil && *input.TenantID != "" {
+		parsed, err := uuid.Parse(*input.TenantID)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid_tenant_id")
+			return
+		}
+		if ctxTenant != uuid.Nil && parsed != ctxTenant {
+			writeJSONError(w, http.StatusForbidden, "tenant_mismatch")
+			return
+		}
+		tenantID = parsed
+	}
+
+	authorID := ctxAuthor
+	if input.AuthorID != nil && *input.AuthorID != "" {
+		parsed, err := uuid.Parse(*input.AuthorID)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid_author_id")
+			return
+		}
+		authorID = parsed
+	}
+
+	s.log.Info("CreatePost title=%q, tags=%v, tenant=%s", input.Title, input.Tags, tenantID)
 
 	post, err := s.service.CreatePost(ctx, core.CreatePostInput{
-		Title: input.Title,
-		Slug:  input.Slug,
-		Tags:  input.Tags,
+		TenantID: tenantID,
+		AuthorID: authorID,
+		Title:    input.Title,
+		Slug:     input.Slug,
+		Tags:     input.Tags,
+		Excerpt:  input.Excerpt,
 	})
 	if err != nil {
 		s.log.Error("CreatePost error: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if input.Content != nil || input.Deadline != nil {
+		if input.Content != nil {
+			post.Content = *input.Content
+		}
+		if input.Deadline != nil {
+			post.Deadline = input.Deadline
+		}
+		if err := s.service.UpdatePost(ctx, post); err != nil {
+			s.log.Error("CreatePost update content error: %v", err)
+		}
 	}
 
 	s.log.Info("CreatePost success id=%s", post.ID)
@@ -234,10 +319,8 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 
 // handlePostByID обрабатывает GET/PATCH/DELETE /api/posts/{id}.
 func (s *Server) handlePostByID(w http.ResponseWriter, r *http.Request) {
-	// Извлекаем ID из пути
 	path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
 
-	// Проверяем, не является ли это запросом на публикацию
 	postID, ok := strings.CutSuffix(path, "/publish")
 	if ok {
 		parsedID, err := core.ParsePostID(postID)
@@ -285,6 +368,11 @@ func (s *Server) getPost(w http.ResponseWriter, r *http.Request, id core.PostID)
 		return
 	}
 
+	if ctxTenant, ok := core.TenantFromContext(ctx); ok && post.TenantID != uuid.Nil && post.TenantID != ctxTenant {
+		writeJSONError(w, http.StatusForbidden, "tenant_mismatch")
+		return
+	}
+
 	s.log.Debug("GetPost success id=%s", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(toJSONPost(post))
@@ -297,12 +385,14 @@ func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.Post
 	s.log.Debug("UpdatePost id=%s", id)
 
 	var input struct {
+		TenantID  *string    `json:"tenant_id,omitempty"`
 		Title     *string    `json:"title,omitempty"`
 		Status    *string    `json:"status,omitempty"`
 		Tags      []string   `json:"tags,omitempty"`
 		Deadline  *time.Time `json:"deadline,omitempty"`
 		Scheduled *time.Time `json:"scheduled_at,omitempty"`
 		Content   *string    `json:"content,omitempty"`
+		Excerpt   *string    `json:"excerpt,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -318,7 +408,25 @@ func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.Post
 		return
 	}
 
-	// Обновляем поля
+	// REQ-8.5: tenant_id immutability.
+	if input.TenantID != nil && *input.TenantID != "" {
+		parsed, perr := uuid.Parse(*input.TenantID)
+		if perr != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid_tenant_id")
+			return
+		}
+		if parsed != post.TenantID {
+			writeJSONError(w, http.StatusBadRequest, "tenant_id_immutable")
+			return
+		}
+	}
+
+	// REQ-8.4: tenant scope check.
+	if ctxTenant, ok := core.TenantFromContext(ctx); ok && post.TenantID != uuid.Nil && post.TenantID != ctxTenant {
+		writeJSONError(w, http.StatusForbidden, "tenant_mismatch")
+		return
+	}
+
 	if input.Title != nil {
 		post.Title = *input.Title
 	}
@@ -344,6 +452,9 @@ func (s *Server) updatePost(w http.ResponseWriter, r *http.Request, id core.Post
 	}
 	if input.Content != nil {
 		post.Content = *input.Content
+	}
+	if input.Excerpt != nil {
+		post.Excerpt = input.Excerpt
 	}
 
 	if err := s.service.UpdatePost(ctx, post); err != nil {
@@ -382,9 +493,11 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	s.log.Debug("HandleStats request")
+	tenantID, _ := core.TenantFromContext(ctx)
 
-	stats, err := s.service.GetStats(ctx)
+	s.log.Debug("HandleStats request tenant=%s", tenantID)
+
+	stats, err := s.service.GetStats(ctx, tenantID)
 	if err != nil {
 		s.log.Error("HandleStats error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -405,9 +518,8 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Парсим days из query параметра
 	daysStr := r.URL.Query().Get("days")
-	days := 30 // по умолчанию
+	days := 30
 	if daysStr != "" {
 		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 {
 			days = d
@@ -416,7 +528,12 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 
 	s.log.Debug("HandlePlan days=%d", days)
 
-	posts, err := s.service.ListPosts(ctx, core.PostFilter{})
+	filter := core.PostFilter{}
+	if t, ok := core.TenantFromContext(ctx); ok {
+		filter.TenantID = t
+	}
+
+	posts, err := s.service.ListPosts(ctx, filter)
 	if err != nil {
 		s.log.Error("HandlePlan error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -448,7 +565,6 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Сортируем по дате
 	sortPlannedByDate(planned)
 
 	s.log.Debug("HandlePlan returned %d planned posts", len(planned))
@@ -469,16 +585,26 @@ func sortPlannedByDate(posts []jsonPlannedPost) {
 
 // jsonPost JSON-представление поста.
 type jsonPost struct {
-	ID          string        `json:"id"`
-	Title       string        `json:"title"`
-	Slug        string        `json:"slug"`
-	Status      string        `json:"status"`
-	Tags        []string      `json:"tags,omitempty"`
-	Deadline    *time.Time    `json:"deadline,omitempty"`
-	ScheduledAt *time.Time    `json:"scheduled_at,omitempty"`
-	PublishedAt *time.Time    `json:"published_at,omitempty"`
-	Content     string        `json:"content"`
-	External    ExternalLinks `json:"external"`
+	ID             string                `json:"id"`
+	TenantID       string                `json:"tenant_id"`
+	AuthorID       string                `json:"author_id"`
+	Title          string                `json:"title"`
+	Slug           string                `json:"slug"`
+	Status         string                `json:"status"`
+	CreatedAt      time.Time             `json:"created_at"`
+	UpdatedAt      time.Time             `json:"updated_at"`
+	Revision       int                   `json:"revision"`
+	Tags           []string              `json:"tags,omitempty"`
+	Deadline       *time.Time            `json:"deadline,omitempty"`
+	ScheduledAt    *time.Time            `json:"scheduled_at,omitempty"`
+	PublishedAt    *time.Time            `json:"published_at,omitempty"`
+	Excerpt        *string               `json:"excerpt,omitempty"`
+	CoverImage     *core.Attachment      `json:"cover_image,omitempty"`
+	Attachments    []core.Attachment     `json:"attachments,omitempty"`
+	PublishHistory []core.PublishAttempt `json:"publish_history,omitempty"`
+	RevisionSHA    *string               `json:"revision_sha,omitempty"`
+	Content        string                `json:"content"`
+	External       ExternalLinks         `json:"external"`
 }
 
 // ExternalLinks ссылки на опубликованные посты.
@@ -489,15 +615,25 @@ type ExternalLinks struct {
 // toJSONPost конвертирует Post в jsonPost.
 func toJSONPost(post *core.Post) jsonPost {
 	return jsonPost{
-		ID:          post.ID.String(),
-		Title:       post.Title,
-		Slug:        post.Slug,
-		Status:      string(post.Status),
-		Tags:        post.Tags,
-		Deadline:    post.Deadline,
-		ScheduledAt: post.ScheduledAt,
-		PublishedAt: post.PublishedAt,
-		Content:     post.Content,
+		ID:             post.ID.String(),
+		TenantID:       post.TenantID.String(),
+		AuthorID:       post.AuthorID.String(),
+		Title:          post.Title,
+		Slug:           post.Slug,
+		Status:         string(post.Status),
+		CreatedAt:      post.CreatedAt,
+		UpdatedAt:      post.UpdatedAt,
+		Revision:       post.Revision,
+		Tags:           post.Tags,
+		Deadline:       post.Deadline,
+		ScheduledAt:    post.ScheduledAt,
+		PublishedAt:    post.PublishedAt,
+		Excerpt:        post.Excerpt,
+		CoverImage:     post.CoverImage,
+		Attachments:    post.Attachments,
+		PublishHistory: post.PublishHistory,
+		RevisionSHA:    post.RevisionSHA,
+		Content:        post.Content,
 		External: ExternalLinks{
 			TelegramURL: post.External.TelegramURL,
 		},
@@ -515,12 +651,15 @@ func (s *Server) publishPost(w http.ResponseWriter, r *http.Request, id core.Pos
 
 	s.log.Info("PublishPost id=%s", id)
 
+	if s.publisher == nil {
+		http.Error(w, "publisher not configured", http.StatusBadRequest)
+		return
+	}
+
 	post, err := s.service.PublishPost(ctx, id, core.PublishPostInput{}, s.publisher)
 	if err != nil {
-		// Логируем ошибку
 		s.log.Error("PublishPost error: %v, id=%s", err, id)
 
-		// Обрабатываем разные типы ошибок
 		switch {
 		case errors.Is(err, core.ErrNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -570,14 +709,17 @@ func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Получаем все посты для извлечения тегов
-	posts, err := s.service.ListPosts(ctx, core.PostFilter{})
+	filter := core.PostFilter{}
+	if t, ok := core.TenantFromContext(ctx); ok {
+		filter.TenantID = t
+	}
+
+	posts, err := s.service.ListPosts(ctx, filter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Собираем уникальные теги
 	tagSet := make(map[string]bool)
 	for _, post := range posts {
 		for _, tag := range post.Tags {
@@ -585,13 +727,11 @@ func (s *Server) handleTags(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Конвертируем в срез
 	tags := make([]string, 0, len(tagSet))
 	for tag := range tagSet {
 		tags = append(tags, tag)
 	}
 
-	// Сортируем теги по алфавиту
 	for i := range len(tags) - 1 {
 		for j := i + 1; j < len(tags); j++ {
 			if tags[i] > tags[j] {
