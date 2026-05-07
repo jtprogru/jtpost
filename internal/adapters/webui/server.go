@@ -81,6 +81,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("/ui/upload", h.handleUpload)
 	h.mux.HandleFunc("/ui/uploads/", h.handleUploadServe)
 	h.mux.HandleFunc("/ui/events", h.handleEvents)
+	h.mux.HandleFunc("/ui/sw.js", h.handleServiceWorker)
 	h.mux.HandleFunc("/ui/audit", h.handleAudit)
 	h.mux.HandleFunc("/ui/login", h.handleLogin)
 	h.mux.HandleFunc("/ui/logout", h.handleLogout)

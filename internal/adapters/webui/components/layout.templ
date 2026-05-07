@@ -15,6 +15,10 @@ templ Layout(p LayoutProps) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ p.Title } — jtpost</title>
+			<link rel="manifest" href="/ui/static/manifest.webmanifest"/>
+			<meta name="theme-color" content="#2563eb"/>
+			<link rel="icon" type="image/png" sizes="192x192" href="/ui/static/icon-192.png"/>
+			<link rel="apple-touch-icon" href="/ui/static/icon-192.png"/>
 			<link rel="stylesheet" href="/ui/static/app.css"/>
 			<script src="/ui/static/htmx.min.js" defer></script>
 			<script src="/ui/static/upload.js" defer></script>
@@ -23,6 +27,11 @@ templ Layout(p LayoutProps) {
 				(function() {
 					const saved = localStorage.getItem('jtpost-theme');
 					if (saved) document.documentElement.setAttribute('data-theme', saved);
+					if ('serviceWorker' in navigator) {
+						window.addEventListener('load', () => {
+							navigator.serviceWorker.register('/ui/sw.js', { scope: '/ui/' }).catch(() => {});
+						});
+					}
 				})();
 			</script>
 		</head>
