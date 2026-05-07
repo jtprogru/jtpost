@@ -125,13 +125,22 @@ type WorkerConfig struct {
 
 // ServerConfig настройки HTTP-сервера.
 type ServerConfig struct {
-	Addr         string        `yaml:"addr" mapstructure:"addr"`
-	Port         int           `yaml:"port" mapstructure:"port"`
-	BaseURL      string        `yaml:"base_url" mapstructure:"base_url"`
-	ReadTimeout  time.Duration `yaml:"read_timeout" mapstructure:"read_timeout"`
-	WriteTimeout time.Duration `yaml:"write_timeout" mapstructure:"write_timeout"`
-	CookieSecure bool          `yaml:"cookie_secure" mapstructure:"cookie_secure"`
-	CookieDomain string        `yaml:"cookie_domain,omitempty" mapstructure:"cookie_domain"`
+	Addr         string          `yaml:"addr" mapstructure:"addr"`
+	Port         int             `yaml:"port" mapstructure:"port"`
+	BaseURL      string          `yaml:"base_url" mapstructure:"base_url"`
+	ReadTimeout  time.Duration   `yaml:"read_timeout" mapstructure:"read_timeout"`
+	WriteTimeout time.Duration   `yaml:"write_timeout" mapstructure:"write_timeout"`
+	CookieSecure bool            `yaml:"cookie_secure" mapstructure:"cookie_secure"`
+	CookieDomain string          `yaml:"cookie_domain,omitempty" mapstructure:"cookie_domain"`
+	RateLimit    RateLimitConfig `yaml:"rate_limit,omitempty" mapstructure:"rate_limit"`
+}
+
+// RateLimitConfig — настройки HTTP rate-limiting middleware.
+type RateLimitConfig struct {
+	Enabled           bool `yaml:"enabled" mapstructure:"enabled"`
+	RequestsPerMinute int  `yaml:"requests_per_minute" mapstructure:"requests_per_minute"`
+	Burst             int  `yaml:"burst" mapstructure:"burst"`
+	TrustProxyHeader  bool `yaml:"trust_proxy_header" mapstructure:"trust_proxy_header"`
 }
 
 // NewDefaultConfig возвращает конфигурацию по умолчанию.
@@ -176,6 +185,11 @@ func NewDefaultConfig() *Config {
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
 			CookieSecure: true,
+			RateLimit: RateLimitConfig{
+				Enabled:           false,
+				RequestsPerMinute: 60,
+				Burst:             10,
+			},
 		},
 		Defaults: DefaultConfig{
 			Status:    string(core.StatusIdea),
@@ -273,6 +287,10 @@ func loadFromFile(path string) (*Config, error) {
 	v.SetDefault("server.port", def.Server.Port)
 	v.SetDefault("server.read_timeout", def.Server.ReadTimeout)
 	v.SetDefault("server.write_timeout", def.Server.WriteTimeout)
+	v.SetDefault("server.rate_limit.enabled", def.Server.RateLimit.Enabled)
+	v.SetDefault("server.rate_limit.requests_per_minute", def.Server.RateLimit.RequestsPerMinute)
+	v.SetDefault("server.rate_limit.burst", def.Server.RateLimit.Burst)
+	v.SetDefault("server.rate_limit.trust_proxy_header", def.Server.RateLimit.TrustProxyHeader)
 
 	// Явный bind для вложенных env-переменных — AutomaticEnv не обходит
 	// неизвестные ключи без хинта.
@@ -295,6 +313,8 @@ func loadFromFile(path string) (*Config, error) {
 		"worker.enabled", "worker.interval", "worker.max_retries", "worker.retry_backoff",
 		"server.addr", "server.port", "server.base_url",
 		"server.read_timeout", "server.write_timeout",
+		"server.rate_limit.enabled", "server.rate_limit.requests_per_minute",
+		"server.rate_limit.burst", "server.rate_limit.trust_proxy_header",
 	} {
 		_ = v.BindEnv(key)
 	}

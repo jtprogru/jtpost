@@ -108,6 +108,21 @@ var serveCmd = &cobra.Command{
 		} else {
 			handler = httpapi.TenantFromConfigMiddleware(cfg)(handler)
 		}
+		// Rate limit идёт после auth, чтобы ключевание шло по User.ID при
+		// аутентифицированных запросах (см. RateLimitMiddleware).
+		// Применяется до LoggingMiddleware → отказы тоже логируются.
+		rlStop := make(chan struct{})
+		defer close(rlStop)
+		if cfg.Server.RateLimit.Enabled {
+			handler = httpapi.RateLimitMiddleware(httpapi.RateLimitConfig{
+				Enabled:           true,
+				RequestsPerMinute: cfg.Server.RateLimit.RequestsPerMinute,
+				Burst:             cfg.Server.RateLimit.Burst,
+				TrustProxyHeader:  cfg.Server.RateLimit.TrustProxyHeader,
+			}, log, rlStop)(handler)
+			log.Info("🚦 Rate limit: %d req/min (burst=%d, trust_proxy=%v)",
+				cfg.Server.RateLimit.RequestsPerMinute, cfg.Server.RateLimit.Burst, cfg.Server.RateLimit.TrustProxyHeader)
+		}
 		handler = httpapi.LoggingMiddleware(log, handler)
 		handler = httpapi.RecoveryMiddleware(log, handler)
 
