@@ -411,6 +411,73 @@ h1, h2, h3 { color: var(--fg); }
 .plan__title:hover { color: var(--accent); }
 .plan__type { color: var(--fg-muted); font-size: 0.85rem; }
 
+/* Calendar page */
+.cal__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+.cal__title { margin: 0; font-size: 1.4rem; }
+.cal__nav { display: flex; gap: 0.5rem; }
+.cal__grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    overflow: hidden;
+}
+.cal__weekday {
+    background: var(--bg-alt);
+    padding: 0.4rem 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--fg-muted);
+    text-align: center;
+}
+.cal__cell {
+    background: var(--bg);
+    min-height: 110px;
+    padding: 0.35rem 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.cal__cell--out { background: var(--bg-alt); opacity: 0.6; }
+.cal__cell--today { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cal__day-num {
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+    font-weight: 500;
+}
+.cal__cell--today .cal__day-num { color: var(--accent); font-weight: 600; }
+.cal__items { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.cal__item {
+    font-size: 0.75rem;
+    line-height: 1.2;
+    border-radius: 0.2rem;
+    padding: 0.1rem 0.3rem;
+    border: 1px solid var(--border);
+    background: var(--bg-alt);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cal__item a { color: var(--fg); text-decoration: none; }
+.cal__item a:hover { color: var(--accent); }
+.cal__item--schedule  { border-color: var(--accent); }
+.cal__item--deadline  { border-color: var(--warning); }
+.cal__item--published { border-color: var(--success); }
+
+@media (max-width: 800px) {
+    .cal__cell { min-height: 70px; }
+    .cal__item { font-size: 0.7rem; }
+}
+
 /* Audit page */
 .audit-table td:first-child { font-family: ui-monospace, monospace; font-size: 0.85rem; white-space: nowrap; }
 .audit-outcome {

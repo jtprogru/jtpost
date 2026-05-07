@@ -39,6 +39,7 @@ templ nav(p LayoutProps) {
 		<div class="nav__links">
 			<a href="/ui/" class={ navLinkClass(p.ActiveNav, "dashboard") }>Posts</a>
 			<a href="/ui/plan" class={ navLinkClass(p.ActiveNav, "plan") }>Plan</a>
+			<a href="/ui/calendar" class={ navLinkClass(p.ActiveNav, "calendar") }>Calendar</a>
 			<a href="/ui/audit" class={ navLinkClass(p.ActiveNav, "audit") }>Audit</a>
 			<button class="theme-toggle" onclick="toggleTheme()">🌓</button>
 			if p.UserEmail != "" {

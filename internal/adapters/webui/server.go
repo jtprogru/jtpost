@@ -74,6 +74,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("/ui/posts/", h.handlePostByID)
 	h.mux.HandleFunc("/ui/preview", h.handlePreview)
 	h.mux.HandleFunc("/ui/plan", h.handlePlan)
+	h.mux.HandleFunc("/ui/calendar", h.handleCalendar)
 	h.mux.HandleFunc("/ui/audit", h.handleAudit)
 	h.mux.HandleFunc("/ui/login", h.handleLogin)
 	h.mux.HandleFunc("/ui/logout", h.handleLogout)

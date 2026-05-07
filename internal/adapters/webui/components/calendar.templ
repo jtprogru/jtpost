@@ -1,0 +1,105 @@
+package components
+
+import (
+	"time"
+
+	"github.com/jtprogru/jtpost/internal/core"
+)
+
+// CalendarItem — пост, привязанный к дню календаря.
+type CalendarItem struct {
+	Post     *core.Post
+	DateType string // "schedule" | "deadline" | "published"
+}
+
+// CalendarDay — одна ячейка календарной сетки.
+type CalendarDay struct {
+	Date    time.Time
+	InMonth bool
+	Items   []CalendarItem
+}
+
+// CalendarProps — данные для месячного календаря.
+type CalendarProps struct {
+	Year      int
+	Month     time.Month
+	Weeks     [][]CalendarDay
+	PrevMonth string // YYYY-MM
+	NextMonth string // YYYY-MM
+	Today     time.Time
+	UserEmail string
+}
+
+templ Calendar(p CalendarProps) {
+	@Layout(LayoutProps{Title: "Calendar", ActiveNav: "calendar", UserEmail: p.UserEmail}) {
+		<div class="cal__header">
+			<h1 class="cal__title">{ p.Month.String() } { itoa(p.Year) }</h1>
+			<div class="cal__nav">
+				<a class="btn" href={ templ.URL("/ui/calendar?month=" + p.PrevMonth) }>← prev</a>
+				<a class="btn" href="/ui/calendar">Today</a>
+				<a class="btn" href={ templ.URL("/ui/calendar?month=" + p.NextMonth) }>next →</a>
+			</div>
+		</div>
+		<div class="cal__grid" role="grid">
+			<div class="cal__weekday">Mon</div>
+			<div class="cal__weekday">Tue</div>
+			<div class="cal__weekday">Wed</div>
+			<div class="cal__weekday">Thu</div>
+			<div class="cal__weekday">Fri</div>
+			<div class="cal__weekday">Sat</div>
+			<div class="cal__weekday">Sun</div>
+			for _, w := range p.Weeks {
+				for _, d := range w {
+					@calCell(d, p.Today)
+				}
+			}
+		</div>
+	}
+}
+
+templ calCell(d CalendarDay, today time.Time) {
+	<div class={ calCellClass(d, today) }>
+		<div class="cal__day-num">{ itoa(d.Date.Day()) }</div>
+		if len(d.Items) > 0 {
+			<ul class="cal__items">
+				for _, it := range d.Items {
+					<li class={ "cal__item cal__item--" + it.DateType }>
+						<a href={ templ.URL("/ui/posts/" + it.Post.ID.String()) } title={ it.Post.Title }>
+							{ calItemPrefix(it.DateType) }
+							{ it.Post.Title }
+						</a>
+					</li>
+				}
+			</ul>
+		}
+	</div>
+}
+
+func calCellClass(d CalendarDay, today time.Time) string {
+	cls := "cal__cell"
+	if !d.InMonth {
+		cls += " cal__cell--out"
+	}
+	if sameDay(d.Date, today) {
+		cls += " cal__cell--today"
+	}
+	return cls
+}
+
+func sameDay(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
+}
+
+func calItemPrefix(dt string) string {
+	switch dt {
+	case "schedule":
+		return "📅 "
+	case "deadline":
+		return "⏰ "
+	case "published":
+		return "✅ "
+	}
+	return ""
+}
