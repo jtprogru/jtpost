@@ -136,4 +136,3 @@ func TestRunDoctor_Healthy(t *testing.T) {
 		t.Fatalf("ожидали финальное сообщение об успехе, получили: %s", buf.String())
 	}
 }
-

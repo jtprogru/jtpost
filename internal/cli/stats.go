@@ -12,6 +12,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// statusOrder возвращает каноническую последовательность статусов для отображения.
+var statusOrder = core.AllStatuses()
+
 var (
 	statsFormat string
 )
@@ -38,7 +41,8 @@ var statsCmd = &cobra.Command{
 		service := core.NewPostService(repo, core.SystemClock{})
 
 		// Получаем статистику
-		stats, err := service.GetStats(cmd.Context())
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		stats, err := service.GetStats(ctx, cfg.Auth.TenantDefault)
 		if err != nil {
 			return fmt.Errorf("ошибка получения статистики: %w", err)
 		}
@@ -73,15 +77,15 @@ func printStatsTable(stats *core.PostStats) {
 	fmt.Fprintln(w, "  ------\t--------")
 
 	// Выводим в порядке жизненного цикла
-	for _, status := range core.StatusOrder {
+	for _, status := range statusOrder {
 		if count, ok := stats.ByStatus[status]; ok {
 			fmt.Fprintf(w, "  %s\t%d\n", status, count)
 		}
 	}
 
-	// Статусы, которых нет в StatusOrder (на случай расширения)
+	// Статусы, которых нет в statusOrder (на случай расширения)
 	for status, count := range stats.ByStatus {
-		if !slices.Contains(core.StatusOrder, status) {
+		if !slices.Contains(statusOrder, status) {
 			fmt.Fprintf(w, "  %s\t%d\n", status, count)
 		}
 	}

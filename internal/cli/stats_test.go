@@ -4,11 +4,9 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/fsrepo"
 	"github.com/jtprogru/jtpost/internal/core"
 )
@@ -18,12 +16,7 @@ func TestStatsCommand(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Создаём конфиг
-	cfg := config.NewDefaultConfig()
-	cfg.PostsDir = tempDir
-	configPath := filepath.Join(tempDir, ".jtpost.yaml")
-	if err := cfg.Save(configPath); err != nil {
-		t.Fatalf("Failed to save config: %v", err)
-	}
+	configPath := writeTestConfig(t, tempDir, tempDir)
 
 	// Создаём репозиторий с тестовыми постами
 	repo, err := fsrepo.NewFileSystemRepository(tempDir)
@@ -33,41 +26,42 @@ func TestStatsCommand(t *testing.T) {
 
 	testPosts := []*core.Post{
 		{
-			ID:        mustParsePostID("post-1"),
-			Title:     "Draft Post 1",
-			Slug:      "draft-post-1",
-			Status:    core.StatusDraft,
-			Tags:      []string{"go", "tutorial"},
-			Content:   "Content 1",
+			ID:      mustParsePostID("post-1"),
+			Title:   "Draft Post 1",
+			Slug:    "draft-post-1",
+			Status:  core.StatusDraft,
+			Tags:    []string{"go", "tutorial"},
+			Content: "Content 1",
 		},
 		{
-			ID:        mustParsePostID("post-2"),
-			Title:     "Draft Post 2",
-			Slug:      "draft-post-2",
-			Status:    core.StatusDraft,
-			Tags:      []string{"go", "cli"},
-			Content:   "Content 2",
+			ID:      mustParsePostID("post-2"),
+			Title:   "Draft Post 2",
+			Slug:    "draft-post-2",
+			Status:  core.StatusDraft,
+			Tags:    []string{"go", "cli"},
+			Content: "Content 2",
 		},
 		{
-			ID:        mustParsePostID("post-3"),
-			Title:     "Ready Post",
-			Slug:      "ready-post",
-			Status:    core.StatusReady,
-			Tags:      []string{"go", "news"},
-			Content:   "Content 3",
+			ID:      mustParsePostID("post-3"),
+			Title:   "Ready Post",
+			Slug:    "ready-post",
+			Status:  core.StatusReady,
+			Tags:    []string{"go", "news"},
+			Content: "Content 3",
 		},
 		{
-			ID:        mustParsePostID("post-4"),
-			Title:     "Published Post",
-			Slug:      "published-post",
-			Status:    core.StatusPublished,
-			Tags:      []string{"tutorial"},
-			Content:   "Content 4",
+			ID:      mustParsePostID("post-4"),
+			Title:   "Published Post",
+			Slug:    "published-post",
+			Status:  core.StatusPublished,
+			Tags:    []string{"tutorial"},
+			Content: "Content 4",
 		},
 	}
 
 	ctx := context.Background()
 	for _, post := range testPosts {
+		fillTestPostDefaults(post)
 		if err := repo.Create(ctx, post); err != nil {
 			t.Fatalf("Failed to create test post: %v", err)
 		}
@@ -162,12 +156,7 @@ func TestStatsCommand(t *testing.T) {
 	t.Run("stats command empty repository", func(t *testing.T) {
 		// Создаём пустую директорию
 		emptyDir := t.TempDir()
-		emptyCfg := config.NewDefaultConfig()
-		emptyCfg.PostsDir = emptyDir
-		emptyConfigPath := filepath.Join(emptyDir, ".jtpost.yaml")
-		if err := emptyCfg.Save(emptyConfigPath); err != nil {
-			t.Fatalf("Failed to save config: %v", err)
-		}
+		emptyConfigPath := writeTestConfig(t, emptyDir, emptyDir)
 
 		// Перехватываем stdout
 		r, w, _ := os.Pipe()

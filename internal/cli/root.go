@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
 
@@ -30,9 +29,9 @@ func Execute() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "jtpost",
-	Short: "CLI-редактор постов для Telegram",
-	Long:  `jtpost — утилита для управления жизненным циклом постов: от идеи до публикации в Telegram.`,
+	Use:     "jtpost",
+	Short:   "CLI-редактор постов для Telegram",
+	Long:    `jtpost — утилита для управления жизненным циклом постов: от идеи до публикации в Telegram.`,
 	Version: fmt.Sprintf("%s (commit: %s, date: %s)", version, commit, date),
 }
 
@@ -66,11 +65,4 @@ func init() {
 func initConfig() {
 	// Инициализация конфигурации будет здесь
 	// Пока оставляем пустым для базовой работы
-}
-
-// getService создаёт и возвращает PostService для использования в командах.
-// Это временная реализация до полной интеграции с адаптерами.
-func getService() (*core.PostService, error) {
-	// TODO: загрузить конфиг, создать репозиторий, вернуть сервис
-	return nil, fmt.Errorf("сервис ещё не инициализирован — используйте команду init")
 }

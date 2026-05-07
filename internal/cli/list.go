@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -41,7 +42,8 @@ var listCmd = &cobra.Command{
 
 		// Преобразуем фильтры
 		filter := core.PostFilter{
-			Search: listSearch,
+			TenantID: cfg.Auth.TenantDefault,
+			Search:   listSearch,
 		}
 
 		for _, s := range listStatuses {
@@ -51,7 +53,8 @@ var listCmd = &cobra.Command{
 		filter.Tags = listTags
 
 		// Получаем список постов
-		posts, err := service.ListPosts(cmd.Context(), filter)
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		posts, err := service.ListPosts(ctx, filter)
 		if err != nil {
 			return fmt.Errorf("ошибка получения списка постов: %w", err)
 		}
@@ -60,11 +63,10 @@ var listCmd = &cobra.Command{
 
 		// Выводим результат
 		switch listFormat {
+		case "json":
+			return printPostsJSON(cmd.OutOrStdout(), posts)
 		case "table":
 			printTable(posts, showID)
-		case "json":
-			// TODO: реализовать JSON вывод
-			fmt.Printf("JSON формат будет реализован позже\n")
 		default:
 			printTable(posts, showID)
 		}
@@ -81,6 +83,16 @@ func init() {
 	listCmd.Flags().BoolVarP(&listNoID, "no-id", "", false, "скрыть колонку ID")
 }
 
+// printPostsJSON выводит posts как JSON-массив. Для пустого ввода возвращает "[]\n".
+func printPostsJSON(out interface{ Write(p []byte) (int, error) }, posts []*core.Post) error {
+	if len(posts) == 0 {
+		posts = []*core.Post{}
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(posts)
+}
+
 func printTable(posts []*core.Post, showID bool) {
 	if len(posts) == 0 {
 		fmt.Println("Посты не найдены")
@@ -88,7 +100,7 @@ func printTable(posts []*core.Post, showID bool) {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	
+
 	if showID {
 		fmt.Fprintln(w, "ID\tSTATUS\tTITLE\tSLUG\tTAGS")
 		fmt.Fprintln(w, "--\t------\t-----\t----\t----")

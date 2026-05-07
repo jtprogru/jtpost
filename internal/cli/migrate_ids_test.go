@@ -63,31 +63,31 @@ func TestHasOldIDFormat(t *testing.T) {
 
 func TestConvertOldIDToUUIDv7(t *testing.T) {
 	tests := []struct {
-		name          string
-		oldID         string
-		expectValid   bool
-		expectUUIDv7  bool
+		name            string
+		oldID           string
+		expectValid     bool
+		expectUUIDv7    bool
 		expectTimestamp int64 // ожидаемый timestamp (с погрешностью)
 	}{
 		{
-			name:          "конвертация старого ID",
-			oldID:         "1710345678-my-post-slug",
-			expectValid:   true,
-			expectUUIDv7:  true,
+			name:            "конвертация старого ID",
+			oldID:           "1710345678-my-post-slug",
+			expectValid:     true,
+			expectUUIDv7:    true,
 			expectTimestamp: 1710345678,
 		},
 		{
-			name:          "конвертация с другим timestamp",
-			oldID:         "1609459200-another-post",
-			expectValid:   true,
-			expectUUIDv7:  true,
+			name:            "конвертация с другим timestamp",
+			oldID:           "1609459200-another-post",
+			expectValid:     true,
+			expectUUIDv7:    true,
 			expectTimestamp: 1609459200,
 		},
 		{
-			name:          "некорректный старый ID (генерируется новый)",
-			oldID:         "invalid-timestamp-post",
-			expectValid:   true,
-			expectUUIDv7:  false, // Будет UUID v4 или v7 с текущим временем
+			name:            "некорректный старый ID (генерируется новый)",
+			oldID:           "invalid-timestamp-post",
+			expectValid:     true,
+			expectUUIDv7:    false, // Будет UUID v4 или v7 с текущим временем
 			expectTimestamp: 0,
 		},
 	}
@@ -135,9 +135,9 @@ func TestConvertOldIDToUUIDv7(t *testing.T) {
 
 func TestGenerateUUIDv7FromTime(t *testing.T) {
 	tests := []struct {
-		name     string
-		timeStr  string
-		format   string
+		name    string
+		timeStr string
+		format  string
 	}{
 		{
 			name:    "конкретное время",

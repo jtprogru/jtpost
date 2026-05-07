@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	migrateIDsForce     bool
-	migrateIDsPostsDir  string
+	migrateIDsForce    bool
+	migrateIDsPostsDir string
 )
 
 // oldIDPattern регулярное выражение для старого формата ID: timestamp-slug.
@@ -57,7 +57,8 @@ var migrateIDsCmd = &cobra.Command{
 		}
 
 		// Получаем все посты
-		allPosts, err := fsRepo.List(ctx, core.PostFilter{})
+		ctx = scopeContext(ctx, cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		allPosts, err := fsRepo.List(ctx, core.PostFilter{TenantID: cfg.Auth.TenantDefault})
 		if err != nil {
 			return fmt.Errorf("ошибка получения списка постов: %w", err)
 		}
@@ -114,7 +115,7 @@ var migrateIDsCmd = &cobra.Command{
 				continue
 			}
 
-			filePath := filepath.Join(postsDir, post.Slug+".md")
+			filePath := filepath.Join(postsDir, post.TenantShortID(), post.Slug+".md")
 			if err := os.WriteFile(filePath, data, 0o600); err != nil {
 				fmt.Printf("❌ Ошибка записи файла %s: %v\n", post.Slug, err)
 				errors++

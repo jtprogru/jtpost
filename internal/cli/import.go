@@ -9,16 +9,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/fsrepo"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
 
+// importCfg хранит конфиг текущего вызова import для обмена с processFile.
+var importCfg *config.Config
+
 var (
-	importDryRun     bool
+	importDryRun      bool
 	importInteractive bool
-	importOutput     string
-	importUpdate     bool
+	importOutput      string
+	importUpdate      bool
 )
 
 var importCmd = &cobra.Command{
@@ -63,6 +68,9 @@ var importCmd = &cobra.Command{
 		// Создаём сервис
 		service := core.NewPostService(outputRepo, core.SystemClock{})
 
+		// Сохраняем cfg для использования в processFile
+		importCfg = cfg
+
 		fmt.Printf("🔍 Сканирование директории: %s\n", sourceDir)
 		fmt.Printf("📁 Выходная директория: %s\n", outputDir)
 		fmt.Printf("🔧 Режим: %s\n", getModeString())
@@ -82,9 +90,10 @@ var importCmd = &cobra.Command{
 		fmt.Printf("📄 Найдено файлов: %d\n\n", len(markdownFiles))
 
 		// Обрабатываем файлы
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
 		stats := &fsrepo.ImportStats{}
 		for _, filePath := range markdownFiles {
-			if err := processFile(cmd.Context(), filePath, service, stats); err != nil {
+			if err := processFile(ctx, filePath, service, stats); err != nil {
 				fmt.Printf("❌ Ошибка обработки %s: %v\n", filePath, err)
 				stats.Errors++
 			}
@@ -159,6 +168,16 @@ func processFile(ctx context.Context, filePath string, service *core.PostService
 	post, err := fsrepo.NormalizeFrontmatter(result, slug)
 	if err != nil {
 		return fmt.Errorf("ошибка нормализации frontmatter: %w", err)
+	}
+
+	// Заполняем TenantID/AuthorID из конфига, если в frontmatter не указано.
+	if importCfg != nil {
+		if post.TenantID == uuid.Nil {
+			post.TenantID = importCfg.Auth.TenantDefault
+		}
+		if post.AuthorID == uuid.Nil {
+			post.AuthorID = importCfg.Auth.AuthorDefault
+		}
 	}
 
 	// Проверяем, существует ли уже пост

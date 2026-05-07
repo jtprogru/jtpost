@@ -38,7 +38,8 @@ var deleteCmd = &cobra.Command{
 		service := core.NewPostService(repo, core.SystemClock{})
 
 		// Получаем пост для отображения информации
-		post, err := service.GetByID(cmd.Context(), id)
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		post, err := service.GetByID(ctx, id)
 		if err != nil {
 			return fmt.Errorf("ошибка получения поста: %w", err)
 		}
@@ -61,7 +62,7 @@ var deleteCmd = &cobra.Command{
 		}
 
 		// Удаляем пост
-		if err := service.DeletePost(cmd.Context(), id); err != nil {
+		if err := service.DeletePost(ctx, id); err != nil {
 			return fmt.Errorf("ошибка удаления поста: %w", err)
 		}
 

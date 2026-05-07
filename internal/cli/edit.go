@@ -39,15 +39,21 @@ var editCmd = &cobra.Command{
 		}
 
 		// Получаем пост для проверки существования
-		_, err = repo.GetByID(cmd.Context(), id)
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		_, err = repo.GetByID(ctx, id)
 		if err != nil {
 			return fmt.Errorf("пост не найден: %w", err)
 		}
 
 		// Находим файл
-		filePath, err := findPostFile(cfg.PostsDir, id)
+		tenantShort := tenantShortHex(cfg.Auth.TenantDefault)
+		filePath, err := findPostFile(filepath.Join(cfg.PostsDir, tenantShort), id)
 		if err != nil {
-			return err
+			// Пробуем корень postsDir для обратной совместимости
+			filePath, err = findPostFile(cfg.PostsDir, id)
+			if err != nil {
+				return err
+			}
 		}
 
 		// Открываем в редакторе

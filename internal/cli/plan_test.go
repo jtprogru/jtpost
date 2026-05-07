@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/jtprogru/jtpost/internal/adapters/config"
 	"github.com/jtprogru/jtpost/internal/adapters/fsrepo"
 	"github.com/jtprogru/jtpost/internal/core"
 )
@@ -19,12 +17,7 @@ func TestPlanCommand(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Создаём конфиг
-	cfg := config.NewDefaultConfig()
-	cfg.PostsDir = tempDir
-	configPath := filepath.Join(tempDir, ".jtpost.yaml")
-	if err := cfg.Save(configPath); err != nil {
-		t.Fatalf("Failed to save config: %v", err)
-	}
+	configPath := writeTestConfig(t, tempDir, tempDir)
 
 	// Создаём репозиторий с тестовыми постами
 	repo, err := fsrepo.NewFileSystemRepository(tempDir)
@@ -39,13 +32,13 @@ func TestPlanCommand(t *testing.T) {
 
 	testPosts := []*core.Post{
 		{
-			ID:          mustParsePostID("post-1"),
-			Title:       "Tomorrow Deadline",
-			Slug:        "tomorrow-deadline",
-			Status:      core.StatusDraft,
-			Tags:        []string{"go", "tutorial"},
-			Content:     "Content 1",
-			Deadline:    &tomorrow,
+			ID:       mustParsePostID("post-1"),
+			Title:    "Tomorrow Deadline",
+			Slug:     "tomorrow-deadline",
+			Status:   core.StatusDraft,
+			Tags:     []string{"go", "tutorial"},
+			Content:  "Content 1",
+			Deadline: &tomorrow,
 		},
 		{
 			ID:          mustParsePostID("post-2"),
@@ -57,34 +50,35 @@ func TestPlanCommand(t *testing.T) {
 			ScheduledAt: &nextWeek,
 		},
 		{
-			ID:        mustParsePostID("post-3"),
-			Title:     "Published Post",
-			Slug:      "published-post",
-			Status:    core.StatusPublished,
-			Tags:      []string{"news"},
-			Content:   "Content 3",
+			ID:      mustParsePostID("post-3"),
+			Title:   "Published Post",
+			Slug:    "published-post",
+			Status:  core.StatusPublished,
+			Tags:    []string{"news"},
+			Content: "Content 3",
 		},
 		{
-			ID:        mustParsePostID("post-4"),
-			Title:     "No Date Post",
-			Slug:      "no-date-post",
-			Status:    core.StatusDraft,
-			Tags:      []string{"draft"},
-			Content:   "Content 4",
+			ID:      mustParsePostID("post-4"),
+			Title:   "No Date Post",
+			Slug:    "no-date-post",
+			Status:  core.StatusDraft,
+			Tags:    []string{"draft"},
+			Content: "Content 4",
 		},
 		{
-			ID:          mustParsePostID("post-5"),
-			Title:       "Next Month Deadline",
-			Slug:        "next-month-deadline",
-			Status:      core.StatusIdea,
-			Tags:        []string{"idea"},
-			Content:     "Content 5",
-			Deadline:    &nextMonth,
+			ID:       mustParsePostID("post-5"),
+			Title:    "Next Month Deadline",
+			Slug:     "next-month-deadline",
+			Status:   core.StatusIdea,
+			Tags:     []string{"idea"},
+			Content:  "Content 5",
+			Deadline: &nextMonth,
 		},
 	}
 
 	ctx := context.Background()
 	for _, post := range testPosts {
+		fillTestPostDefaults(post)
 		if err := repo.Create(ctx, post); err != nil {
 			t.Fatalf("Failed to create test post: %v", err)
 		}
@@ -172,12 +166,7 @@ func TestPlanCommand(t *testing.T) {
 	t.Run("plan command empty repository", func(t *testing.T) {
 		// Создаём пустую директорию
 		emptyDir := t.TempDir()
-		emptyCfg := config.NewDefaultConfig()
-		emptyCfg.PostsDir = emptyDir
-		emptyConfigPath := filepath.Join(emptyDir, ".jtpost.yaml")
-		if err := emptyCfg.Save(emptyConfigPath); err != nil {
-			t.Fatalf("Failed to save config: %v", err)
-		}
+		emptyConfigPath := writeTestConfig(t, emptyDir, emptyDir)
 
 		// Перехватываем stdout
 		r, w, _ := os.Pipe()
@@ -232,20 +221,20 @@ func TestPlanOutput(t *testing.T) {
 		posts := []*plannedPost{
 			{
 				Post: &core.Post{
-					ID:        mustParsePostID("test-1"),
-					Title:     "Test Post 1",
-					Slug:      "test-post-1",
-					Status:    core.StatusDraft,
+					ID:     mustParsePostID("test-1"),
+					Title:  "Test Post 1",
+					Slug:   "test-post-1",
+					Status: core.StatusDraft,
 				},
 				Date:     deadline,
 				DateType: "deadline",
 			},
 			{
 				Post: &core.Post{
-					ID:        mustParsePostID("test-2"),
-					Title:     "Test Post 2",
-					Slug:      "test-post-2",
-					Status:    core.StatusReady,
+					ID:     mustParsePostID("test-2"),
+					Title:  "Test Post 2",
+					Slug:   "test-post-2",
+					Status: core.StatusReady,
 				},
 				Date:     deadline,
 				DateType: "schedule",

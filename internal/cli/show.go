@@ -39,7 +39,8 @@ var showCmd = &cobra.Command{
 		service := core.NewPostService(repo, core.SystemClock{})
 
 		// Получаем пост
-		post, err := service.GetByID(cmd.Context(), id)
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		post, err := service.GetByID(ctx, id)
 		if err != nil {
 			return fmt.Errorf("ошибка получения поста: %w", err)
 		}

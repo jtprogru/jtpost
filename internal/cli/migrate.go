@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	migrateDBPath     string
-	migrateDryRun     bool
-	migrateOverwrite  bool
-	migrateSourceDir  string
+	migrateDBPath    string
+	migrateDryRun    bool
+	migrateOverwrite bool
+	migrateSourceDir string
 )
 
 var migrateCmd = &cobra.Command{
@@ -62,7 +62,8 @@ var migrateCmd = &cobra.Command{
 		}
 
 		// Получаем все посты из источника
-		allPosts, err := fsRepo.List(ctx, core.PostFilter{})
+		ctx = scopeContext(ctx, cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		allPosts, err := fsRepo.List(ctx, core.PostFilter{TenantID: cfg.Auth.TenantDefault})
 		if err != nil {
 			return fmt.Errorf("ошибка получения списка постов: %w", err)
 		}

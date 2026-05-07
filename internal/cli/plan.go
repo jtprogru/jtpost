@@ -36,7 +36,8 @@ var planCmd = &cobra.Command{
 		service := core.NewPostService(repo, core.SystemClock{})
 
 		// Получаем все посты
-		posts, err := service.ListPosts(cmd.Context(), core.PostFilter{})
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		posts, err := service.ListPosts(ctx, core.PostFilter{TenantID: cfg.Auth.TenantDefault})
 		if err != nil {
 			return fmt.Errorf("ошибка получения списка постов: %w", err)
 		}

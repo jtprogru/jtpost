@@ -48,7 +48,8 @@ var statusCmd = &cobra.Command{
 		}
 
 		// Обновляем статус
-		post, err := service.UpdateStatus(cmd.Context(), id, newStatus)
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		post, err := service.UpdateStatus(ctx, id, newStatus)
 		if err != nil {
 			return fmt.Errorf("ошибка обновления статуса: %w", err)
 		}

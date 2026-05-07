@@ -37,7 +37,8 @@ var nextCmd = &cobra.Command{
 		service := core.NewPostService(repo, core.SystemClock{})
 
 		// Получаем рекомендацию
-		post, err := service.GetNextPost(cmd.Context())
+		ctx := scopeContext(cmd.Context(), cfg.Auth.TenantDefault, cfg.Auth.AuthorDefault)
+		post, err := service.GetNextPost(ctx, cfg.Auth.TenantDefault)
 		if err != nil {
 			return fmt.Errorf("ошибка получения рекомендации: %w", err)
 		}
