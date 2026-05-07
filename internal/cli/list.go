@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"text/tabwriter"
 
+	"github.com/jtprogru/jtpost/internal/adapters/apiclient"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
@@ -23,13 +25,12 @@ var listCmd = &cobra.Command{
 	Short: "Список постов",
 	Long:  `Выводит список постов с возможностью фильтрации по статусу и тегам.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Remote-mode (F5b): если задан --remote → используем apiclient.
-		apiCli, isRemote, err := newAPIClient(cmd)
-		if err != nil {
+		// Remote-mode (F5b/c): если задан --remote → используем apiclient.
+		didRun, err := runRemote(cmd, func(ctx context.Context, cli *apiclient.ClientWithResponses) error {
+			return runListRemote(ctx, cli, cmd.OutOrStdout())
+		})
+		if err != nil || didRun {
 			return err
-		}
-		if isRemote {
-			return runListRemote(cmd, apiCli)
 		}
 
 		// Загружаем конфигурацию

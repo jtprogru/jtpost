@@ -43,3 +43,21 @@ func newAPIClient(cmd *cobra.Command) (*apiclient.ClientWithResponses, bool, err
 	}
 	return cli, true, nil
 }
+
+// runRemote — общий wrapper для remote-mode CLI команд. Если --remote не задан,
+// возвращает (false, nil) — caller продолжает в local-mode. Иначе вызывает fn
+// с готовым client + ctx и возвращает (true, fn-error).
+func runRemote(cmd *cobra.Command, fn func(ctx context.Context, cli *apiclient.ClientWithResponses) error) (bool, error) {
+	cli, isRemote, err := newAPIClient(cmd)
+	if err != nil {
+		return false, err
+	}
+	if !isRemote {
+		return false, nil
+	}
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return true, fn(ctx, cli)
+}

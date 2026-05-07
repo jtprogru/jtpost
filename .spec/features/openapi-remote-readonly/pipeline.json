@@ -1,0 +1,21 @@
+{
+  "feature": "openapi-remote-readonly",
+  "phase": "done",
+  "created_at": "2026-05-07T10:45:56Z",
+  "current_artifact": null,
+  "history": [
+    {"phase": "explore", "artifact": ".spec/features/openapi-remote-readonly/explore.md", "approved_at": "2026-05-07T10:46:35Z"},
+    {"phase": "requirements", "artifact": ".spec/features/openapi-remote-readonly/requirements.md", "approved_at": "2026-05-07T10:47:00Z"},
+    {"phase": "design", "artifact": ".spec/features/openapi-remote-readonly/design.md", "approved_at": "2026-05-07T10:48:05Z"},
+    {"phase": "task-plan", "artifact": ".spec/features/openapi-remote-readonly/task-plan.md", "approved_at": "2026-05-07T10:54:30Z"},
+    {"phase": "implementation", "artifact": ".spec/features/openapi-remote-readonly/implementation.md", "approved_at": "2026-05-07T11:00:20Z"},
+    {"phase": "review", "artifact": ".spec/features/openapi-remote-readonly/review.md", "approved_at": "2026-05-07T11:00:55Z"}
+  ],
+  "review_base_commit": "275d64e5481d59086f39f29608cf6a095b8d092d",
+  "branch": "feature/openapi-remote-readonly",
+  "worktree": null,
+  "last_completed_task": null,
+  "finish_action": null,
+  "finished_at": null,
+  "finish_base": null
+}

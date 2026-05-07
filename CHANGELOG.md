@@ -7,6 +7,26 @@
 
 ## [Неопубликовано]
 
+### F5c: `--remote` для read-only CLI команд (extension of B.3)
+
+**Добавлено:**
+- **`runRemote(cmd, fn)` helper** в `internal/cli/remote.go` — DRY-обёртка для всех remote-mode команд: проверяет `--remote/--auth`, инициализирует apiclient, вызывает fn с готовыми ctx+client. Возвращает `(didRun bool, err error)` — caller branches local/remote.
+- **`jtpost show <uuid> --remote URL --auth TOKEN`** через `cli.GetPostWithResponse(ctx, id)`. Slug в remote-mode не поддержан (требуется UUID). 404 → "post not found".
+- **`jtpost stats --remote ...`** через `cli.GetStatsWithResponse(ctx)` — JSON-вывод status counts.
+- **`jtpost plan --remote ...`** через `cli.GetPlanWithResponse(ctx)` — JSON массив PlanItem.
+- **`jtpost next --remote ...`** через `cli.GetNextPostWithResponse(ctx)`. 404 → "no next post available".
+- **Refactor `runListRemote`** под общий helper-pattern (signature принимает ctx+cli+out).
+
+**Backward-compat:** local-mode (без `--remote`) — без изменений. Existing tests pass.
+
+**Migration path:** read-only commands теперь работают через remote API. Например:
+```sh
+JTPOST_AUTH_TOKEN=jtpat_... jtpost stats --remote https://server/api/v1
+JTPOST_AUTH_TOKEN=jtpat_... jtpost show 019e... --remote https://server/api/v1
+```
+
+**Отложено в F5d/e:** `--remote` для write commands (`new`, `edit`, `delete`, `publish`); server-side ServerInterface codegen; table-mode для remote-вывода (сейчас JSON-only); slug-lookup для `show --remote` (нужен GET /posts/by-slug/{slug} endpoint в spec).
+
 ### F5b: OpenAPI client codegen + `--remote` mode (continuation of B.3)
 
 **Добавлено:**

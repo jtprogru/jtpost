@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +49,7 @@ func TestList_RemoteMode_Success(t *testing.T) {
 	if !isRemote {
 		t.Fatal("expected isRemote=true")
 	}
-	if err := runListRemote(cmd, cli); err != nil {
+	if err := runListRemote(context.Background(), cli, out); err != nil {
 		t.Fatal(err)
 	}
 	var got []map[string]any
@@ -97,7 +98,8 @@ func TestList_RemoteMode_RemoteReturns401(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = runListRemote(cmd, cli)
+	out := &bytes.Buffer{}
+	err = runListRemote(context.Background(), cli, out)
 	if err == nil || !strings.Contains(err.Error(), "unauthorized") {
 		t.Fatalf("expected unauthorized error, got %v", err)
 	}

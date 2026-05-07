@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/jtprogru/jtpost/internal/adapters/apiclient"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
@@ -18,6 +20,14 @@ var planCmd = &cobra.Command{
 	Short: "План публикаций",
 	Long:  `Показывает план публикаций на ближайшие дни.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// F5c: --remote mode.
+		didRun, err := runRemote(cmd, func(ctx context.Context, cli *apiclient.ClientWithResponses) error {
+			return runPlanRemote(ctx, cli, cmd.OutOrStdout())
+		})
+		if err != nil || didRun {
+			return err
+		}
+
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
 		cfg, err := loadConfigOrCreateDefault(configPath)

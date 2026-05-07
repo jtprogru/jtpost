@@ -4,22 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/jtprogru/jtpost/internal/adapters/apiclient"
-	"github.com/spf13/cobra"
 )
 
-func contextBackground() context.Context { return context.Background() }
-
 // runListRemote реализует `jtpost list --remote` через apiclient.ListPosts.
-// F5b: proof-of-concept; full filter-coverage и table-вывод — F5c.
-func runListRemote(cmd *cobra.Command, cli *apiclient.ClientWithResponses) error {
+// Принимает уже подготовленный ctx и client из runRemote helper.
+func runListRemote(ctx context.Context, cli *apiclient.ClientWithResponses, out io.Writer) error {
 	params := &apiclient.ListPostsParams{}
 	if listSearch != "" {
 		params.Search = &listSearch
 	}
-	// status filter — берём первое значение (multi-status в spec не поддержан upstream).
 	if len(listStatuses) > 0 {
 		s := listStatuses[0]
 		params.Status = &s
@@ -29,13 +26,6 @@ func runListRemote(cmd *cobra.Command, cli *apiclient.ClientWithResponses) error
 		params.Tag = &t
 	}
 
-	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = cmd.Root().Context()
-	}
-	if ctx == nil {
-		ctx = contextBackground()
-	}
 	resp, err := cli.ListPostsWithResponse(ctx, params)
 	if err != nil {
 		return fmt.Errorf("remote API call failed: %w", err)
@@ -53,8 +43,7 @@ func runListRemote(cmd *cobra.Command, cli *apiclient.ClientWithResponses) error
 	if resp.JSON200 != nil {
 		posts = *resp.JSON200
 	}
-	// F5b: simple JSON-вывод (table-mode для generated types — F5c).
-	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(posts)
 }

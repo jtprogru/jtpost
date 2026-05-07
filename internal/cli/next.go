@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/jtprogru/jtpost/internal/adapters/apiclient"
 	"github.com/jtprogru/jtpost/internal/core"
 	"github.com/spf13/cobra"
 )
@@ -19,6 +21,14 @@ var nextCmd = &cobra.Command{
 	Short: "Рекомендация следующего поста",
 	Long:  `Рекомендует следующий пост для работы на основе дедлайнов, scheduled_at и статуса.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// F5c: --remote mode.
+		didRun, err := runRemote(cmd, func(ctx context.Context, cli *apiclient.ClientWithResponses) error {
+			return runNextRemote(ctx, cli, cmd.OutOrStdout())
+		})
+		if err != nil || didRun {
+			return err
+		}
+
 		// Загружаем конфигурацию
 		configPath, _ := cmd.Flags().GetString("config")
 		cfg, err := loadConfigOrCreateDefault(configPath)
