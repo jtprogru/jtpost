@@ -321,9 +321,9 @@ type txKey struct{}
 // scanPost сканирует пост из sql.Row.
 func scanPost(row *sql.Row) (*core.Post, error) {
 	var (
-		id, title, slug, status, tagsJSON string
-		deadline, scheduledAt, publishedAt               string
-		content, telegramURL, createdAt, updatedAt       string
+		id, title, slug, status, tagsJSON          string
+		deadline, scheduledAt, publishedAt         string
+		content, telegramURL, createdAt, updatedAt string
 	)
 
 	err := row.Scan(&id, &title, &slug, &status, &tagsJSON,
@@ -347,12 +347,12 @@ func scanPost(row *sql.Row) (*core.Post, error) {
 	}
 
 	post := &core.Post{
-		ID:        parsedID,
-		Title:     title,
-		Slug:      slug,
-		Status:    core.PostStatus(status),
-		Tags:      tags,
-		Content:   content,
+		ID:      parsedID,
+		Title:   title,
+		Slug:    slug,
+		Status:  core.PostStatus(status),
+		Tags:    tags,
+		Content: content,
 		External: core.ExternalLinks{
 			TelegramURL: telegramURL,
 		},
@@ -382,9 +382,9 @@ func scanPost(row *sql.Row) (*core.Post, error) {
 // scanPostRow сканирует пост из sql.Rows.
 func scanPostRow(rows interface{ Scan(dest ...any) error }) (*core.Post, error) {
 	var (
-		id, title, slug, status, tagsJSON string
-		deadline, scheduledAt, publishedAt               string
-		content, telegramURL, createdAt, updatedAt       string
+		id, title, slug, status, tagsJSON          string
+		deadline, scheduledAt, publishedAt         string
+		content, telegramURL, createdAt, updatedAt string
 	)
 
 	err := rows.Scan(&id, &title, &slug, &status, &tagsJSON,
@@ -405,12 +405,12 @@ func scanPostRow(rows interface{ Scan(dest ...any) error }) (*core.Post, error) 
 	}
 
 	post := &core.Post{
-		ID:        parsedID,
-		Title:     title,
-		Slug:      slug,
-		Status:    core.PostStatus(status),
-		Tags:      tags,
-		Content:   content,
+		ID:      parsedID,
+		Title:   title,
+		Slug:    slug,
+		Status:  core.PostStatus(status),
+		Tags:    tags,
+		Content: content,
 		External: core.ExternalLinks{
 			TelegramURL: telegramURL,
 		},
@@ -457,6 +457,8 @@ func (r *PostRepository) migrate() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS posts (
 		id TEXT PRIMARY KEY,
+		tenant_id TEXT NOT NULL DEFAULT '',
+		author_id TEXT NOT NULL DEFAULT '',
 		title TEXT NOT NULL,
 		slug TEXT NOT NULL UNIQUE,
 		status TEXT NOT NULL,
@@ -466,12 +468,14 @@ func (r *PostRepository) migrate() error {
 		published_at TEXT,
 		content TEXT NOT NULL,
 		telegram_url TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
+		revision INTEGER NOT NULL DEFAULT 1,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 	CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
+	CREATE INDEX IF NOT EXISTS idx_posts_tenant_id ON posts(tenant_id);
 	`
 
 	_, err := r.db.ExecContext(context.Background(), schema)

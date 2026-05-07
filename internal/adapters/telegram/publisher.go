@@ -142,9 +142,9 @@ func (p *Publisher) sendMessage(ctx context.Context, text string) (string, error
 	apiURL := fmt.Sprintf("%s%s/sendMessage", p.baseURL, p.botToken)
 
 	payload := map[string]any{
-		"chat_id":    p.channelID,
-		"text":       text,
-		"parse_mode": "HTML",
+		"chat_id":                  p.channelID,
+		"text":                     text,
+		"parse_mode":               "HTML",
 		"disable_web_page_preview": true,
 	}
 
@@ -175,7 +175,7 @@ func (p *Publisher) sendMessage(ctx context.Context, text string) (string, error
 	}
 
 	var result struct {
-		OK     bool          `json:"ok"`
+		OK     bool            `json:"ok"`
 		Result telegramMessage `json:"result"`
 	}
 

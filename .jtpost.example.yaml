@@ -1,9 +1,62 @@
+# jtpost configuration example.
+# Скопируйте этот файл в .jtpost.yaml и настройте под свой проект.
+# Все значения можно переопределить переменными окружения с префиксом JTPOST_,
+# например JTPOST_POSTS_DIR, JTPOST_TELEGRAM_BOT_TOKEN, JTPOST_AUTH_TENANT_DEFAULT.
+
 posts_dir: content/posts
 templates_dir: templates
 
+# Хранилище постов: fs (файловая система) | sqlite | postgres.
+storage:
+  type: fs
+  git:
+    enabled: false
+    auto_commit: true
+    auto_push: false
+    branch: main
+    commit_template: "chore: update post {{.Slug}}"
+  sqlite:
+    dsn: .jtpost.db
+  postgres:
+    dsn: ""
+    max_open_conns: 10
+    max_idle_conns: 5
+    conn_max_lifetime: 30m
+
+# Аутентификация и multi-tenant scope.
+# tenant_default / author_default — UUIDv7 идентификаторы, генерируются командой `jtpost init`.
+auth:
+  type: none  # none | basic | oauth | token
+  secret: ""
+  tenant_default: 01900000-0000-7000-8000-000000000001
+  author_default: 01900000-0000-7000-8000-000000000002
+  token_ttl: 24h
+  # oauth:
+  #   provider: github
+  #   client_id: ""
+  #   client_secret: ""
+  #   redirect_url: ""
+
+# Фоновый воркер для отложенных публикаций.
+worker:
+  enabled: false
+  interval: 1m
+  max_retries: 3
+  retry_backoff: 30s
+
+# Встроенный HTTP-сервер (jtpost serve).
+server:
+  addr: localhost
+  port: 8080
+  base_url: ""
+  read_timeout: 15s
+  write_timeout: 15s
+
+# Telegram bot для публикаций.
 telegram:
   bot_token: 1234567890:ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHI
   chat_id: -1009999999999
 
 defaults:
   status: idea
+  platforms: [telegram]  # зарезервировано для будущих платформ

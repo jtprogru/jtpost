@@ -7,6 +7,37 @@
 
 ## [Неопубликовано]
 
+### F1: Foundation — расширение домена, multi-tenant readiness и новая схема конфигурации
+
+**Breaking changes:**
+- `Post` получил обязательные поля `tenant_id`, `author_id`, `created_at`, `updated_at`, `revision`. Старые посты без этих полей не загружаются (см. путь миграции ниже).
+- FS-репозиторий хранит посты в подкаталогах: `<posts_dir>/<tenant_short_id>/<slug>.md`, где `tenant_short_id` — первые 8 hex-символов `tenant_id` без дефисов.
+- Удалена экспортируемая `core.StatusOrder` — заменена приватной `allowedTransitions` + публичной функцией `core.IsTransitionAllowed`.
+- Удалена legacy функция `getService` из `internal/cli/root.go`.
+- Сигнатуры `PostService.GetStats(ctx, tenantID)` и `PostService.GetNextPost(ctx, tenantID)` теперь требуют `tenant_id`.
+- HTTP API: PATCH с попыткой изменить `tenant_id` поста → 400 `{"error":"tenant_id_immutable"}`. POST/PATCH с body.tenant_id ≠ tenant scope → 403 `{"error":"tenant_mismatch"}`.
+
+**Добавлено:**
+- В `Post`: опциональные `excerpt`, `cover_image`, `attachments[]`, `publish_history[]`, `revision_sha`. Типы `Attachment{ID,Type,Path,URL,Caption,MimeType,Size}`, `PublishAttempt{ID,At,Target,Status,MessageID,ResponsePayload,Error,RetryAttempt,Duration}`.
+- Новые статусы: `archived`, `failed`. Разрешены контролируемые откаты (`scheduled→ready`, `failed→ready`).
+- Новые ошибки: `core.ErrInvalidTransition`, `core.ErrTenantMismatch`, `core.ErrPublishRetryExhausted`.
+- Метод `Post.TenantShortID()`, `PostFilter.TenantShortID()`, `Attachment.AbsolutePath(postsDir)` (с защитой от path traversal).
+- В `PostFilter` — `TenantID` (обязательный), `AuthorID`, `SortBy`, `SortOrder`, `Limit`, `Offset`. Whitelist sort-ключей: `created_at|updated_at|deadline|scheduled_at|title|status`.
+- Новые секции конфига `.jtpost.yaml`: `storage.{type,git,sqlite,postgres}`, `auth.{type,secret,tenant_default,author_default,oauth,token_ttl}`, `worker.{enabled,interval,max_retries,retry_backoff}`, `server.{addr,port,base_url,read_timeout,write_timeout}`. Поддержка env-override через `JTPOST_STORAGE_TYPE`, `JTPOST_AUTH_TENANT_DEFAULT`, `JTPOST_WORKER_INTERVAL`, и т. д.
+- `jtpost init` стал интерактивным: при существующем конфиге спрашивает подтверждение `[y/N]`. Флаг `--force` пропускает запрос. Генерирует `auth.tenant_default` и `auth.author_default` (UUIDv7) при первом запуске; перегенерирует `author_default` при коллизии 8-символьного префикса с `tenant_default`.
+- `jtpost new --tenant <uuid> --author <uuid>` — переопределить tenant/author создаваемого поста.
+- `jtpost list --format json` — валидный JSON-массив (`[]` для пустого результата).
+- `internal/core/scope.go` — context-keys `WithTenant`/`TenantFromContext`, `WithAuthor`/`AuthorFromContext`.
+- HTTP middleware `TenantFromConfigMiddleware(cfg)` — заглушка под F4 (auth), читает `auth.tenant_default`/`author_default` и кладёт в request context.
+- `jsonPost` HTTP API расширен всеми новыми полями `Post`.
+- Тесты: новый файл `internal/adapters/config/config_test.go`, расширенные `internal/core/{post,core,service}_test.go`, `internal/adapters/fsrepo/{repository,frontmatter_parser}_test.go`, `internal/adapters/httpapi/{server,middleware}_test.go`, `internal/cli/{init,new,list}_test.go`. Покрытие 49 unit-тестов + 15 PBT-substitute (тегированы `Property/N`).
+- Минимальная адаптация SQLite-схемы: добавлены колонки `tenant_id`, `author_id`, `revision` (полная имплементация — F2 через sqlc/goose).
+
+**Migration path:**
+1. Удалить старый `.jtpost.yaml` (или сделать резервную копию) и запустить `jtpost init --force` — будет создан новый конфиг с автогенерированными `tenant_default`/`author_default`.
+2. Если использовался SQLite-режим — удалить `.jtpost.db` (`rm .jtpost.db`) и пересоздать. Полные миграции — F2.
+3. Существующие FS-посты должны быть перенесены в `content/posts/<tenant_short_id>/<slug>.md` с добавлением обязательных полей frontmatter (`tenant_id`, `author_id`, `created_at`, `updated_at`, `revision: 1`).
+
 ### Добавлено
 - CI/CD пайплайн через GitHub Actions (тесты, линтинг, релизы)
 - Шаблоны для Issues (bug report, feature request)

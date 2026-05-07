@@ -36,7 +36,7 @@ func TestMarkdownToHTML(t *testing.T) {
 			expected: "<code>code here</code>",
 		},
 		{
-			name: "code block",
+			name:     "code block",
 			markdown: "```go\nfmt.Println(\"hello\")\n```",
 			expected: "<pre>go\nfmt.Println(\"hello\")\n</pre>",
 		},
@@ -46,7 +46,7 @@ func TestMarkdownToHTML(t *testing.T) {
 			expected: `<a href="https://google.com">Google</a>`,
 		},
 		{
-			name: "mixed formatting",
+			name:     "mixed formatting",
 			markdown: "**bold** and *italic* and `code`",
 			expected: "<b>bold</b> and <i>italic</i> and <code>code</code>",
 		},
@@ -223,13 +223,13 @@ func TestConvertCodeBlocks(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "single code block",
-			input: "```go\nfmt.Println(\"hi\")\n```",
+			name:     "single code block",
+			input:    "```go\nfmt.Println(\"hi\")\n```",
 			expected: "<pre>go\nfmt.Println(\"hi\")\n</pre>",
 		},
 		{
-			name: "code block without language",
-			input: "```\nsome code\n```",
+			name:     "code block without language",
+			input:    "```\nsome code\n```",
 			expected: "<pre>\nsome code\n</pre>",
 		},
 	}

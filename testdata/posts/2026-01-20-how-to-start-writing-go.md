@@ -15,6 +15,11 @@ scheduled_at: "2026-01-20T10:00:00+03:00"
 published_at: "2026-01-20T10:00:00+03:00"
 external:
   telegram_url: "https://t.me/example/123"
+tenant_id: 01900000-0000-7000-8000-000000000001
+author_id: 01900000-0000-7000-8000-000000000002
+created_at: 2026-01-01T00:00:00Z
+updated_at: 2026-01-01T00:00:00Z
+revision: 1
 ---
 
 # Введение

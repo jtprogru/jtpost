@@ -30,13 +30,13 @@ func TestLogger_LevelString(t *testing.T) {
 
 func TestParseFormat(t *testing.T) {
 	cases := map[string]Format{
-		"":     FormatText,
-		"text": FormatText,
-		"TEXT": FormatText,
+		"":       FormatText,
+		"text":   FormatText,
+		"TEXT":   FormatText,
 		" json ": FormatJSON,
-		"json": FormatJSON,
-		"JSON": FormatJSON,
-		"foo":  FormatText, // неизвестный формат → text
+		"json":   FormatJSON,
+		"JSON":   FormatJSON,
+		"foo":    FormatText, // неизвестный формат → text
 	}
 	for in, want := range cases {
 		if got := ParseFormat(in); got != want {
@@ -121,9 +121,9 @@ func TestLogger_TextOutput(t *testing.T) {
 	})
 
 	cases := []struct {
-		fn       func(string, ...any)
-		level    string
-		message  string
+		fn      func(string, ...any)
+		level   string
+		message string
 	}{
 		{log.Info, "INFO", "test message"},
 		{log.Debug, "DEBUG", "debug message"},

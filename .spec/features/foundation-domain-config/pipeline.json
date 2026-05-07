@@ -1,0 +1,21 @@
+{
+  "feature": "foundation-domain-config",
+  "phase": "done",
+  "created_at": "2026-05-06T19:39:23Z",
+  "current_artifact": null,
+  "history": [
+    {"phase": "explore", "artifact": "/Users/jtprogru/Work/github/jtprogru/jtpost/.spec/features/foundation-domain-config/explore.md", "approved_at": "2026-05-06T19:43:17Z"},
+    {"phase": "requirements", "artifact": "/Users/jtprogru/Work/github/jtprogru/jtpost/.spec/features/foundation-domain-config/requirements.md", "approved_at": "2026-05-06T19:53:37Z"},
+    {"phase": "design", "artifact": "/Users/jtprogru/Work/github/jtprogru/jtpost/.spec/features/foundation-domain-config/design.md", "approved_at": "2026-05-06T20:01:32Z"},
+    {"phase": "task-plan", "artifact": "/Users/jtprogru/Work/github/jtprogru/jtpost/.spec/features/foundation-domain-config/task-plan.md", "approved_at": "2026-05-06T20:12:21Z"},
+    {"phase": "implementation", "artifact": "/Users/jtprogru/Work/github/jtprogru/jtpost/.spec/features/foundation-domain-config/implementation.md", "approved_at": "2026-05-07T05:20:32Z"},
+    {"phase": "review", "artifact": "/Users/jtprogru/Work/github/jtprogru/jtpost/.spec/features/foundation-domain-config/review.md", "approved_at": "2026-05-07T05:36:44Z"}
+  ],
+  "review_base_commit": "323006174f3d7d418229728e526eb0ed5a681f83",
+  "branch": "feature/foundation-domain-config",
+  "worktree": null,
+  "last_completed_task": null,
+  "finish_action": null,
+  "finished_at": null,
+  "finish_base": null
+}
