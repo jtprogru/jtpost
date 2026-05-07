@@ -46,6 +46,9 @@ func (m *mockOutboxRepo) List(context.Context, core.OutboxFilter) ([]*core.Outbo
 func (m *mockOutboxRepo) GetByID(context.Context, uuid.UUID) (*core.OutboxEntry, error) {
 	return nil, core.ErrNotFound
 }
+func (m *mockOutboxRepo) SweepStuck(context.Context, time.Duration, time.Time) (int, error) {
+	return 0, nil
+}
 
 func newTestServerWithOutbox(t *testing.T, outbox core.OutboxRepository) (*Server, *mockPostRepository) {
 	t.Helper()

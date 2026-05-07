@@ -140,6 +140,57 @@ func TestSQLiteOutbox_MarkDone_MarkRetry_MarkFailed(t *testing.T) {
 	}
 }
 
+func TestSQLiteOutbox_SweepStuck(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	box := r.Outbox()
+	now := time.Now().UTC()
+
+	// stuck entry — claim'нутая 30m назад.
+	stuck := makeOutboxEntry()
+	stuck.NextAttemptAt = now.Add(-30 * time.Minute)
+	if err := box.Enqueue(ctx, stuck); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := box.ClaimNext(ctx, now.Add(-29*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	// Pretend updated_at — давно (имитируем через прямой UPDATE).
+	if _, err := r.db.ExecContext(ctx,
+		"UPDATE outbox_entries SET updated_at = ? WHERE id = ?",
+		now.Add(-30*time.Minute).Format(time.RFC3339Nano), stuck.ID.String()); err != nil {
+		t.Fatal(err)
+	}
+
+	// fresh entry — claim'нутая прямо сейчас.
+	fresh := makeOutboxEntry()
+	fresh.NextAttemptAt = now.Add(-time.Second)
+	if err := box.Enqueue(ctx, fresh); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := box.ClaimNext(ctx, now)
+	if err != nil || claimed == nil || claimed.ID != fresh.ID {
+		t.Fatalf("expected to claim fresh, got %v err=%v", claimed, err)
+	}
+
+	// Sweep с threshold=10m → должна попасть только stuck.
+	n, err := box.SweepStuck(ctx, 10*time.Minute, now)
+	if err != nil {
+		t.Fatalf("SweepStuck: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 swept, got %d", n)
+	}
+	got1, _ := box.GetByID(ctx, stuck.ID)
+	if got1.Status != core.OutboxStatusPending {
+		t.Errorf("stuck should be pending, got %s", got1.Status)
+	}
+	got2, _ := box.GetByID(ctx, fresh.ID)
+	if got2.Status != core.OutboxStatusInFlight {
+		t.Errorf("fresh should remain in_flight, got %s", got2.Status)
+	}
+}
+
 func TestSQLiteOutbox_List(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

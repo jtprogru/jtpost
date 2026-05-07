@@ -162,6 +162,18 @@ func (r *OutboxRepository) GetByID(ctx context.Context, id uuid.UUID) (*core.Out
 	return outboxFromPgRow(row), nil
 }
 
+func (r *OutboxRepository) SweepStuck(ctx context.Context, threshold time.Duration, now time.Time) (int, error) {
+	cutoff := now.Add(-threshold)
+	rows, err := r.queries.SweepStuckOutbox(ctx, pgdb.SweepStuckOutboxParams{
+		UpdatedAt:   toPgTimestampVal(now),
+		UpdatedAt_2: toPgTimestampVal(cutoff),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return int(rows), nil
+}
+
 func outboxFromPgRow(row pgdb.OutboxEntry) *core.OutboxEntry {
 	var nextAt, createdAt, updatedAt time.Time
 	if row.NextAttemptAt.Valid {

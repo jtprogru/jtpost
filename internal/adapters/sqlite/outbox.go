@@ -167,6 +167,18 @@ func (r *OutboxRepository) GetByID(ctx context.Context, id uuid.UUID) (*core.Out
 	return outboxFromRow(row)
 }
 
+func (r *OutboxRepository) SweepStuck(ctx context.Context, threshold time.Duration, now time.Time) (int, error) {
+	cutoff := now.Add(-threshold).UTC().Format(time.RFC3339Nano)
+	rows, err := r.queries.SweepStuckOutbox(ctx, sqlitedb.SweepStuckOutboxParams{
+		UpdatedAt:   now.UTC().Format(time.RFC3339Nano),
+		UpdatedAt_2: cutoff,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return int(rows), nil
+}
+
 func outboxFromRow(row sqlitedb.OutboxEntry) (*core.OutboxEntry, error) {
 	id, err := uuid.Parse(row.ID)
 	if err != nil {

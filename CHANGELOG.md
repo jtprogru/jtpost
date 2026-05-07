@@ -7,6 +7,17 @@
 
 ## [Неопубликовано]
 
+### B.5c: Worker hardening — stuck-recovery sweep + Postgres integration tests
+
+**Добавлено:**
+- **`OutboxRepository.SweepStuck(ctx, threshold, now)`** — возвращает кол-во `in_flight` записей, у которых `updated_at < now-threshold`, обратно в `pending` (статус сбрасывается, attempts сохраняются — попытка засчитана). SQLite + Postgres адаптеры.
+- **Worker integration**: `WorkerConfig.StuckThreshold` (default 10m) + `SweepInterval` (default 5m). `Worker.Run` вызывает `sweepStuck` на старте и по тикеру параллельно с poll-loop'ом. Защищает от crashes между ClaimNext и MarkDone/Retry.
+
+**Тесты:**
+- `TestSQLiteOutbox_SweepStuck`: stuck (updated_at давно) sweep'ится, fresh (только что claim'нута) — нет.
+- `TestWorker_SweepStuckOnRun`: до sweep — processOne не находит in_flight, после sweep — находит и обрабатывает.
+- **Postgres integration tests** (`outbox_test.go` под `//go:build integration`): FullLifecycle (Enqueue+Get+Claim+Retry+Failed+ErrNotFound), ClaimOrdering, SweepStuck, List. Требует Docker для testcontainers.
+
 ### B.5b: HTTP API endpoint `POST /posts/{id}/queue` (closes B.5)
 
 **Добавлено:**

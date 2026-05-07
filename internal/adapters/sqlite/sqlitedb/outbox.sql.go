@@ -267,3 +267,22 @@ func (q *Queries) MarkOutboxRetry(ctx context.Context, arg MarkOutboxRetryParams
 	}
 	return result.RowsAffected()
 }
+
+const sweepStuckOutbox = `-- name: SweepStuckOutbox :execrows
+UPDATE outbox_entries
+SET status = 'pending', updated_at = ?
+WHERE status = 'in_flight' AND updated_at < ?
+`
+
+type SweepStuckOutboxParams struct {
+	UpdatedAt   string
+	UpdatedAt_2 string
+}
+
+func (q *Queries) SweepStuckOutbox(ctx context.Context, arg SweepStuckOutboxParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, sweepStuckOutbox, arg.UpdatedAt, arg.UpdatedAt_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

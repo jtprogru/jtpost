@@ -13,6 +13,8 @@ type WorkerConfig struct {
 	PollInterval    time.Duration
 	BackoffSchedule []time.Duration
 	MaxAttempts     int
+	StuckThreshold  time.Duration // entries in_flight дольше этого периодически возвращаются в pending
+	SweepInterval   time.Duration // как часто запускать sweep
 	Logger          *log.Logger
 }
 
@@ -36,6 +38,12 @@ func NewWorker(outbox OutboxRepository, posts PostRepository, pub Publisher, clo
 	if cfg.MaxAttempts <= 0 {
 		cfg.MaxAttempts = 5
 	}
+	if cfg.StuckThreshold <= 0 {
+		cfg.StuckThreshold = 10 * time.Minute
+	}
+	if cfg.SweepInterval <= 0 {
+		cfg.SweepInterval = 5 * time.Minute
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = log.Default()
 	}
@@ -44,9 +52,13 @@ func NewWorker(outbox OutboxRepository, posts PostRepository, pub Publisher, clo
 
 // Run запускает poll-loop до отмены ctx. Возвращает ctx.Err().
 func (w *Worker) Run(ctx context.Context) error {
-	w.cfg.Logger.Printf("worker: started (poll=%s, max_attempts=%d)", w.cfg.PollInterval, w.cfg.MaxAttempts)
+	w.cfg.Logger.Printf("worker: started (poll=%s, max_attempts=%d, sweep=%s/threshold=%s)",
+		w.cfg.PollInterval, w.cfg.MaxAttempts, w.cfg.SweepInterval, w.cfg.StuckThreshold)
+	w.sweepStuck(ctx)
 	t := time.NewTicker(w.cfg.PollInterval)
 	defer t.Stop()
+	sweep := time.NewTicker(w.cfg.SweepInterval)
+	defer sweep.Stop()
 	for {
 		// Drain pending entries в текущем тике.
 		for {
@@ -62,8 +74,22 @@ func (w *Worker) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			w.cfg.Logger.Printf("worker: stopped (%v)", ctx.Err())
 			return ctx.Err()
+		case <-sweep.C:
+			w.sweepStuck(ctx)
 		case <-t.C:
 		}
+	}
+}
+
+// sweepStuck возвращает stuck in_flight записи в pending. Логирует, не паникует.
+func (w *Worker) sweepStuck(ctx context.Context) {
+	n, err := w.outbox.SweepStuck(ctx, w.cfg.StuckThreshold, w.clock.Now())
+	if err != nil {
+		w.cfg.Logger.Printf("worker: sweep failed: %v", err)
+		return
+	}
+	if n > 0 {
+		w.cfg.Logger.Printf("worker: swept %d stuck in_flight entries back to pending", n)
 	}
 }
 

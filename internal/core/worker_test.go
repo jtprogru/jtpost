@@ -98,6 +98,22 @@ func (m *mockOutbox) List(_ context.Context, _ OutboxFilter) ([]*OutboxEntry, er
 	return out, nil
 }
 
+func (m *mockOutbox) SweepStuck(_ context.Context, threshold time.Duration, now time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cutoff := now.Add(-threshold)
+	count := 0
+	for _, e := range m.entries {
+		if e.Status == OutboxStatusInFlight && e.UpdatedAt.Before(cutoff) {
+			e.Status = OutboxStatusPending
+			e.UpdatedAt = now
+			m.queue = append(m.queue, e.ID)
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (m *mockOutbox) GetByID(_ context.Context, id uuid.UUID) (*OutboxEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -287,6 +303,41 @@ func TestWorker_ProcessOne_EmptyQueue(t *testing.T) {
 	processed, err := w.processOne(context.Background())
 	if err != nil || processed {
 		t.Errorf("expected not processed, got %v %v", processed, err)
+	}
+}
+
+func TestWorker_SweepStuckOnRun(t *testing.T) {
+	now := time.Now().UTC()
+	clock := &fixedClock{t: now}
+	outbox := newMockOutbox()
+	postID := PostID(uuid.New())
+
+	// Имитируем stuck-запись: insert + ручной in_flight + старый updated_at.
+	stuck := &OutboxEntry{
+		ID:            uuid.New(),
+		PostID:        postID,
+		Status:        OutboxStatusInFlight,
+		MaxAttempts:   3,
+		NextAttemptAt: now.Add(-time.Hour),
+		UpdatedAt:     now.Add(-30 * time.Minute),
+	}
+	outbox.entries[stuck.ID] = stuck
+
+	posts := newMockPosts()
+	posts.posts[postID] = &Post{ID: postID, Status: StatusReady, Content: "x"}
+	pub := &mockPublisher{}
+	w := NewWorker(outbox, posts, pub, clock, WorkerConfig{StuckThreshold: 10 * time.Minute})
+
+	// processOne НЕ должна найти stuck (он in_flight). После явного sweep — найдёт.
+	if processed, _ := w.processOne(context.Background()); processed {
+		t.Errorf("expected nothing to process before sweep")
+	}
+	w.sweepStuck(context.Background())
+	if stuck.Status != OutboxStatusPending {
+		t.Fatalf("expected pending after sweep, got %s", stuck.Status)
+	}
+	if processed, _ := w.processOne(context.Background()); !processed {
+		t.Errorf("expected processed after sweep")
 	}
 }
 

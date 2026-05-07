@@ -52,6 +52,9 @@ type OutboxRepository interface {
 	MarkFailed(ctx context.Context, id uuid.UUID, errMsg string, now time.Time) error
 	List(ctx context.Context, filter OutboxFilter) ([]*OutboxEntry, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*OutboxEntry, error)
+	// SweepStuck сбрасывает в pending все in_flight записи, у которых
+	// updated_at < now-threshold. Возвращает кол-во reset'нутых записей.
+	SweepStuck(ctx context.Context, threshold time.Duration, now time.Time) (int, error)
 }
 
 // DefaultBackoffSchedule — exponential schedule per attempt index (0-based).

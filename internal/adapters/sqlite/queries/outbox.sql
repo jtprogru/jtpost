@@ -44,6 +44,11 @@ WHERE status = ?
 ORDER BY created_at DESC
 LIMIT ?;
 
+-- name: SweepStuckOutbox :execrows
+UPDATE outbox_entries
+SET status = 'pending', updated_at = ?
+WHERE status = 'in_flight' AND updated_at < ?;
+
 -- name: ListOutboxAll :many
 SELECT id, post_id, tenant_id, kind, status, attempts, max_attempts,
        next_attempt_at, last_error, created_at, updated_at
