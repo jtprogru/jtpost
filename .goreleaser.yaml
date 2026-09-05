@@ -122,7 +122,7 @@ brews:
       email: bot@goreleaser.com
     commit_msg_template: "brew: jtpost {{ .Tag }}"
     homepage: "https://github.com/jtprogru/jtpost"
-    description: "CLI/web-сервис для управления публикациями в Telegram-канал."
+    description: "CLI/web-сервис для управления публикациями в Telegram-канал"
     license: "MIT"
     skip_upload: auto
     test: |
